@@ -1,0 +1,25 @@
+appId: com.seekcode.app
+productName: SeekCode
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+extraResources:
+  # 本地 OCR 字库：随包分发到 process.resourcesPath/tessdata（见 src/main/ocr.ts）
+  - from: resources/tessdata
+    to: tessdata
+asarUnpack:
+  - resources/**
+win:
+  target: nsis
+mac:
+  target: dmg
+  category: public.app-category.developer-tools
+linux:
+  target: AppImage
+  category: Development
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

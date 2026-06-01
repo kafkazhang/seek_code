@@ -1,0 +1,749 @@
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useStore } from './store'
+import { ChatMessage, EditPreview, ReasoningMode, StoredTool } from '@shared/types'
+import { lineDiff, diffStat } from './diff'
+import MarkdownView from './components/MarkdownView'
+import Settings from './components/Settings'
+import ToolDock from './components/ToolDock'
+import RichInput from './components/RichInput'
+import Palette from './components/Palette'
+import { CodeDiff } from './components/CodeEditor'
+import DragHandle from './components/DragHandle'
+import { MODES, modeLabel, nextMode } from './modes'
+
+const MODE_LABEL: Record<ReasoningMode, string> = { fast: 'FAST', balanced: 'BALANCED', deep: 'DEEP' }
+
+// 品牌标识：优先使用工程内的 logo（src/renderer/public/brand.png，建议透明背景、仅图标），
+// 若文件缺失则回退到内置标识（默认声呐脉冲动画，可由 fallback 覆盖），保证界面在任何情况下都不破损。
+function BrandMark({
+  className = 'brand-logo',
+  fallback
+}: {
+  className?: string
+  fallback?: JSX.Element
+}): JSX.Element {
+  const [ok, setOk] = useState(true)
+  if (ok) {
+    return (
+      <img className={className} src="./brand.png" alt="SeekCode" draggable={false} onError={() => setOk(false)} />
+    )
+  }
+  return (
+    fallback ?? (
+      <div className="sonar-mark">
+        <div className="core" />
+        <div className="ring" />
+        <div className="ring" />
+      </div>
+    )
+  )
+}
+
+function renderText(text: string): JSX.Element[] {
+  return text.split(/(`[^`]+`)/g).map((p, i) =>
+    p.startsWith('`') && p.endsWith('`') && p.length > 1 ? (
+      <code key={i}>{p.slice(1, -1)}</code>
+    ) : (
+      <span key={i}>{p}</span>
+    )
+  )
+}
+
+const lsNum = (k: string, d: number): number => {
+  const v = parseInt(localStorage.getItem(k) || '', 10)
+  return Number.isFinite(v) ? v : d
+}
+const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, n))
+
+export default function App(): JSX.Element {
+  const s = useStore()
+  const cur = s.active()
+
+  // 三栏（侧栏 | 中央 | 工具面板）宽度，可拖拽并持久化
+  const [sideW, setSideW] = useState(() => lsNum('seek.ws.sideW', 266))
+  const [dockW, setDockW] = useState(() => lsNum('seek.ws.dockW', 360))
+  const startSide = useRef(sideW)
+  const startDock = useRef(dockW)
+
+  // 窗口变窄时收敛 dock 宽度，保证对话栏不被挤没
+  useEffect(() => {
+    const fit = (): void =>
+      setDockW((w) => Math.min(w, Math.max(360, window.innerWidth - sideW - 280)))
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [sideW])
+
+  useEffect(() => {
+    s.init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 全局快捷键
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const mod = e.ctrlKey || e.metaKey
+      if (e.shiftKey && mod && (e.key === 'M' || e.key === 'm')) {
+        e.preventDefault()
+        const st = useStore.getState()
+        st.setMode(nextMode(st.permissionMode)) // 循环权限模式
+      } else if (mod && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault()
+        useStore.getState().setPalette('files') // 快速打开
+      } else if (mod && e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault()
+        useStore.getState().setPalette('search') // 全局搜索
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  return (
+    <>
+      <div className="bg bg-glow" />
+      <div className="bg bg-grid" />
+
+      <div className="app">
+        {/* title bar */}
+        <header className="titlebar">
+          <div className="brand">
+            <BrandMark />
+            <div>
+              <b>
+                Seek<span>Code</span>
+              </b>{' '}
+              <small>v0.1</small>
+            </div>
+          </div>
+
+          <div className="spacer" />
+
+          <div className="privacy" title="纯本地运行 · 代码不出本机 · 仅 LLM 推理走网络">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <rect x="5" y="11" width="14" height="9" rx="2" />
+              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+            </svg>
+            纯本地
+          </div>
+
+          <div
+            className={'model-sel' + (s.config?.hasKey ? '' : ' off')}
+            onClick={() => s.setSettingsOpen(true)}
+            title="点击配置 API Key 与模型"
+          >
+            <span className="m-icon" />
+            <b>DeepSeek-V4</b>
+            <span className="v">{s.reasoning === 'fast' ? s.config?.flashModel : s.config?.proModel}</span>
+            <span className={'key' + (s.config?.hasKey ? '' : ' no')}>{s.config?.hasKey ? '· key ✓' : '· 未配置'}</span>
+          </div>
+        </header>
+
+        <div
+          className="workspace"
+          data-dock={s.dockOpen ? 'true' : 'false'}
+          style={{ '--side-w': `${sideW}px`, '--dock-w': `${dockW}px` } as CSSProperties}
+        >
+          <Sidebar />
+          <main className="center">
+            <ConvHeader />
+            <Chat />
+            <Composer />
+          </main>
+          {s.dockOpen && <ToolDock />}
+          <DragHandle
+            className="ws-h ws-h-left"
+            onStart={() => (startSide.current = sideW)}
+            onResize={(dx) => {
+              const w = clamp(startSide.current + dx, 190, 520)
+              setSideW(w)
+              localStorage.setItem('seek.ws.sideW', String(w))
+            }}
+          />
+          {s.dockOpen && (
+            <DragHandle
+              className="ws-h ws-h-right"
+              onStart={() => (startDock.current = dockW)}
+              onResize={(dx) => {
+                // 上限随窗口动态：文件栏可一直拉宽，仅给对话栏保留最小可用宽度
+                const max = Math.max(360, window.innerWidth - sideW - 280)
+                const w = clamp(startDock.current - dx, 300, max)
+                setDockW(w)
+                localStorage.setItem('seek.ws.dockW', String(w))
+              }}
+            />
+          )}
+        </div>
+
+        {/* status bar */}
+        <footer className="statusbar">
+          <div className="st-item">
+            <span className="d" />
+            纯本地 · <span className="cy">仅推理联网</span>
+          </div>
+          <div className="st-item">{cur?.projectName ? `项目 ${cur.projectName}` : '未绑定项目'}</div>
+          <div className="st-item">
+            缓存 <span className="cy">{cur && cur.totals.hitRate ? Math.round(cur.totals.hitRate * 100) + '%' : '—'}</span>
+          </div>
+          <div className="st-item">
+            本会话 <span className="sv">¥{(cur?.totals.cost ?? 0).toFixed(4)}</span> · 省{' '}
+            <span className="sv">¥{(cur?.totals.saved ?? 0).toFixed(4)}</span>
+          </div>
+          <div className="st-item grow" />
+          <BalanceItem />
+          <div className="st-item">{s.status || '就绪'}</div>
+          <div className="st-item">DeepSeek-V4 · {s.config?.hasKey ? <span className="cy">key ✓</span> : '未配置'}</div>
+        </footer>
+      </div>
+
+      {s.settingsOpen && <Settings />}
+      <Palette />
+    </>
+  )
+}
+
+// ── 状态栏：账户余额（DeepSeek /user/balance）────────────
+function BalanceItem(): JSX.Element | null {
+  const balance = useStore((st) => st.balance)
+  const hasKey = useStore((st) => st.config?.hasKey ?? false)
+  const loadBalance = useStore((st) => st.loadBalance)
+  if (!hasKey) return null
+
+  // 货币符号映射，未知币种回退为币种码
+  const symbol = (cur?: string): string => (cur === 'CNY' ? '¥' : cur === 'USD' ? '$' : (cur ? cur + ' ' : '¥'))
+  let inner: JSX.Element
+  if (!balance) {
+    inner = <span className="balance-load">查询中…</span>
+  } else if (balance.ok && balance.totalBalance != null) {
+    inner = (
+      <span className={balance.isAvailable === false ? 'sv low' : 'sv'}>
+        {symbol(balance.currency)}
+        {balance.totalBalance}
+      </span>
+    )
+  } else {
+    inner = <span className="balance-err">查询失败</span>
+  }
+
+  return (
+    <div className="st-item balance" title="DeepSeek 账户余额 · 点击刷新" onClick={() => void loadBalance()}>
+      余额 {inner}
+    </div>
+  )
+}
+
+// ── Sidebar: 会话列表 ─────────────────────────────────
+function Sidebar(): JSX.Element {
+  const { sessions, activeId, newSession, selectSession, deleteSession, running, setSettingsOpen, config } =
+    useStore()
+  return (
+    <aside className="sidebar">
+      <button className="new-session" onClick={newSession}>
+        <span className="plus">+</span> 新建会话
+      </button>
+
+      <div className="side-label">最近会话</div>
+      <div className="sess-list scroll">
+        {sessions.length === 0 && <div className="empty-side">暂无会话</div>}
+        {sessions.map((sess) => (
+          <div
+            key={sess.id}
+            className={'sess' + (sess.id === activeId ? ' on' : '')}
+            onClick={() => selectSession(sess.id)}
+          >
+            <span className={'dot' + (running[sess.id] ? ' run' : '')} />
+            <div className="sess-main">
+              <div className="sess-title">{sess.title}</div>
+              <div className="sess-sub">{sess.projectName ?? '未选择项目'}</div>
+            </div>
+            <button
+              className="sess-del"
+              title="删除会话"
+              onClick={(e) => {
+                e.stopPropagation()
+                deleteSession(sess.id)
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="side-foot" onClick={() => setSettingsOpen(true)} title="设置">
+        <div className="av">
+          <BrandMark className="av-logo" fallback={<span>求</span>} />
+        </div>
+        <div className="sf-main">
+          <div className="sf-name">SeekCode</div>
+          <div className="sf-sub">{config?.hasKey ? 'DeepSeek-V4 · key ✓' : '点此配置 API Key'}</div>
+        </div>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.7">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" />
+        </svg>
+      </div>
+    </aside>
+  )
+}
+
+// ── 会话头部：标题 + 项目（只读，状态指示） ──────────────
+function ConvHeader(): JSX.Element | null {
+  const cur = useStore((st) => st.active())
+  const dockOpen = useStore((st) => st.dockOpen)
+  const dockTab = useStore((st) => st.dockTab)
+  const setDock = useStore((st) => st.setDock)
+  if (!cur) return null
+  const toggle = (tab: 'files' | 'terminal'): void =>
+    dockOpen && dockTab === tab ? setDock(false) : setDock(true, tab)
+  const activeTool = (tab: string): boolean => dockOpen && dockTab === tab
+  return (
+    <div className="conv-h">
+      <div className="conv-title">{cur.messages.length ? cur.title : '新会话'}</div>
+      {cur.projectName && (
+        <>
+          <div className="conv-tools">
+            <button className={'ctool' + (activeTool('files') || activeTool('preview') ? ' on' : '')} onClick={() => toggle('files')} title="文件列表 / 预览">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <path d="M3 7l2-3h6l2 3h6v12H3z" />
+              </svg>
+              文件
+            </button>
+            <button className={'ctool' + (activeTool('terminal') ? ' on' : '')} onClick={() => toggle('terminal')} title="终端">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <path d="M4 5h16v14H4z" />
+                <path d="M7 9l3 3-3 3M13 15h4" />
+              </svg>
+              终端
+            </button>
+          </div>
+          <div className={'conv-proj' + (cur.started ? ' locked' : '')}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="M3 7l2-3h6l2 3h6v12H3z" />
+            </svg>
+            {cur.projectName}
+            {cur.started && (
+              <svg className="lk" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="5" y="11" width="14" height="9" rx="2" />
+                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+              </svg>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Chat ─────────────────────────────────────────────
+function Chat(): JSX.Element {
+  const { approvals, approve } = useStore()
+  const cur = useStore((st) => st.active())
+  const ref = useRef<HTMLDivElement>(null)
+  const msgs = cur?.messages ?? []
+  const myApprovals = approvals.filter((a) => a.sessionId === cur?.id)
+
+  useEffect(() => {
+    ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: 'smooth' })
+  }, [msgs, myApprovals.length])
+
+  if (msgs.length === 0) {
+    return (
+      <div className="chat" ref={ref}>
+        <div className="welcome">
+          <div className="big-mark">求</div>
+          <h1>
+            在代码的海洋里 <span>深度求索</span>
+          </h1>
+          <p>纯本地 AI 结对程序员，由 DeepSeek-V4 驱动。</p>
+          <p>
+            {cur?.projectName
+              ? `已绑定项目「${cur.projectName}」，直接提问吧。`
+              : '先在下方选择项目目录（开始后将锁定），再开始对话。'}
+          </p>
+          <div className="hints">
+            <div className="hint">“梳理这个项目的整体结构”</div>
+            <div className="hint">“给 src/utils 加一个防抖函数并写注释”</div>
+            <div className="hint">“找出所有 TODO 并列个清单”</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="chat" ref={ref}>
+      {msgs.map((m) => (
+        <Message key={m.id} m={m} />
+      ))}
+      {myApprovals.map((a) => (
+        <div className="approval" key={a.approvalId}>
+          <div className="at">
+            Agent 请求执行：<b>{a.summary}</b>
+          </div>
+          {a.preview && <DiffView preview={a.preview} />}
+          <div className="acts">
+            <button className="ok" onClick={() => approve(a.approvalId, true)}>
+              {a.preview ? '接受改动' : '批准'}
+            </button>
+            <button className="no" onClick={() => approve(a.approvalId, false)}>
+              拒绝
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DiffView({ preview }: { preview: EditPreview }): JSX.Element {
+  const lines = useMemo(() => lineDiff(preview.oldText, preview.newText), [preview])
+  const stat = diffStat(lines)
+  // 行内 diff 高度自适应并钳制，避免聊天里多个 Monaco 实例占满视口
+  const rows = Math.max(preview.oldText.split('\n').length, preview.newText.split('\n').length)
+  const height = Math.min(460, Math.max(90, rows * 20 + 24))
+  return (
+    <div className="diff">
+      <div className="diff-h">
+        <span className="dp">
+          {preview.isNew && <span className="dnew">新建</span>}
+          {preview.path}
+        </span>
+        <span className="dstat">
+          <span className="da">+{stat.add}</span>
+          <span className="dd">−{stat.del}</span>
+        </span>
+      </div>
+      <div className="diff-mono" style={{ height }}>
+        <CodeDiff path={preview.path} original={preview.oldText} modified={preview.newText} />
+      </div>
+    </div>
+  )
+}
+
+// ── 单个工具调用：状态指示 + 默认折叠、可展开的详情 ──────────
+function ToolCall({ t }: { t: StoredTool }): JSX.Element {
+  const openPreview = useStore((s) => s.openPreview)
+  const [open, setOpen] = useState(false)
+  const path = toolPath(t.args)
+  const canOpen = !!path && (t.name === 'read_file' || t.name === 'write_file' || t.name === 'edit_file')
+  const showDiff = !!t.preview && t.preview.oldText !== t.preview.newText
+  const result = (t.result ?? '').trim()
+  const running = t.status === 'running'
+  const hasDetail = !!result || showDiff || canOpen
+  const statusText = running
+    ? '执行中…'
+    : t.status === 'done'
+      ? '完成'
+      : t.status === 'denied'
+        ? '已拒绝'
+        : '失败'
+  return (
+    <div className={'tool-call ' + t.status + (open ? ' open' : '')}>
+      <div
+        className={'tc-head' + (hasDetail ? ' expandable' : '')}
+        title={hasDetail ? (open ? '收起详情' : '展开详情') : ''}
+        onClick={() => hasDetail && setOpen((o) => !o)}
+      >
+        <span className="tc-ind" aria-hidden>
+          {running ? (
+            <span className="tc-spin" />
+          ) : t.status === 'done' ? (
+            '✓'
+          ) : t.status === 'denied' ? (
+            '⊘'
+          ) : (
+            '✗'
+          )}
+        </span>
+        <span className="tl">{t.name}</span>
+        <span className="arg">{shortArgs(t.args)}</span>
+        <span className="res">{statusText}</span>
+        {hasDetail && <span className="tc-caret">{open ? '▾' : '▸'}</span>}
+      </div>
+      {open && hasDetail && (
+        <div className="tc-body">
+          {showDiff && <DiffView preview={t.preview!} />}
+          {result && <pre className="tc-result">{result}</pre>}
+          {canOpen && (
+            <button
+              className="tc-open"
+              onClick={(e) => {
+                e.stopPropagation()
+                void openPreview(path!)
+              }}
+            >
+              在预览中打开 {path}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Message({ m }: { m: ChatMessage }): JSX.Element {
+  const retryMessage = useStore((s) => s.retryMessage)
+  const editMessage = useStore((s) => s.editMessage)
+  const setSettingsOpen = useStore((s) => s.setSettingsOpen)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  if (m.note) {
+    return <div className="sys-note">{renderText(m.content)}</div>
+  }
+  if (m.role === 'user') {
+    return (
+      <div className="msg user">
+        <div className="ic">你</div>
+        <div className="body">
+          <div className="who">
+            <b>你</b>
+            {!editing && (
+              <button
+                className="msg-copy"
+                onClick={() => {
+                  setDraft(m.content)
+                  setEditing(true)
+                }}
+              >
+                编辑
+              </button>
+            )}
+          </div>
+          {editing ? (
+            <div className="msg-edit">
+              <textarea value={draft} autoFocus onChange={(e) => setDraft(e.target.value)} />
+              <div className="me-acts">
+                <button
+                  className="me-save"
+                  onClick={() => {
+                    setEditing(false)
+                    void editMessage(m.id, draft)
+                  }}
+                >
+                  保存并重发
+                </button>
+                <button className="me-cancel" onClick={() => setEditing(false)}>
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="text">{renderText(m.content)}</div>
+              {m.images && m.images.length > 0 && (
+                <div className="msg-imgs">
+                  {m.images.map((src, i) => (
+                    <img key={i} src={src} alt="附件" />
+                  ))}
+                </div>
+              )}
+              {m.files && m.files.length > 0 && (
+                <div className="msg-files">
+                  {m.files.map((f, i) => (
+                    <span className="msg-file" key={i}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                        <path d="M14 2H6v20h12V8z" />
+                        <path d="M14 2v6h6" />
+                      </svg>
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
+  const tag = (m.mode ?? 'balanced') as ReasoningMode
+  return (
+    <div className="msg assistant">
+      <div className="ic">SC</div>
+      <div className="body">
+        <div className="who">
+          <b>SeekCode</b>
+          <span className={'reason-tag ' + tag}>{MODE_LABEL[tag]}</span>
+          {m.content && !m.streaming && (
+            <>
+              <button className="msg-copy" title="复制回复" onClick={() => void navigator.clipboard.writeText(m.content)}>
+                复制
+              </button>
+              <button className="msg-copy" title="重新生成" onClick={() => void retryMessage(m.id)}>
+                重试
+              </button>
+            </>
+          )}
+        </div>
+        {m.reasoning && <div className="reasoning-block">{m.reasoning}</div>}
+        {m.tools.map((t) => (
+          <ToolCall key={t.callId} t={t} />
+        ))}
+        {m.content &&
+          (m.streaming ? (
+            <div className="text">{renderText(m.content)}</div>
+          ) : (
+            <MarkdownView source={m.content} className="chat-md md-body" />
+          ))}
+        {m.error && (
+          <div className="err-card">
+            <div className="ec-title">⚠ {friendlyError(m.error)}</div>
+            <div className="ec-detail">{m.error}</div>
+            <div className="ec-acts">
+              {isKeyError(m.error) && (
+                <button className="ec-btn primary" onClick={() => setSettingsOpen(true)}>
+                  打开设置
+                </button>
+              )}
+              <button className="ec-btn" onClick={() => void retryMessage(m.id)}>
+                重试
+              </button>
+            </div>
+          </div>
+        )}
+        {m.streaming && !m.content && m.tools.length === 0 && (
+          <div className="typing">
+            <i />
+            <i />
+            <i />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function shortArgs(args: string): string {
+  try {
+    const o = JSON.parse(args)
+    if (o.path) return o.path
+    if (o.command) return o.command
+    if (o.pattern) return `/${o.pattern}/`
+    if (o.query) return `“${o.query}”`
+    return JSON.stringify(o).slice(0, 60)
+  } catch {
+    return args.slice(0, 60)
+  }
+}
+
+function isKeyError(msg: string): boolean {
+  return /api\s*key|apikey|401|unauthorized|authentication|未配置/i.test(msg)
+}
+function friendlyError(msg: string): string {
+  const m = msg.toLowerCase()
+  if (isKeyError(msg)) return 'API Key 无效或未配置，请在设置中检查'
+  if (/enotfound|econnrefused|fetch failed|network|timeout|etimedout|getaddrinfo|socket/.test(m))
+    return '网络连接失败，请检查网络或接口地址（baseURL）'
+  if (/429|rate limit|too many/.test(m)) return '请求过于频繁（限流），请稍后重试'
+  if (/insufficient|balance|quota|余额|欠费/.test(m)) return '账户额度不足或已欠费'
+  return '请求出错，可重试或检查设置'
+}
+
+function toolPath(args: string): string | null {
+  try {
+    const o = JSON.parse(args)
+    return typeof o.path === 'string' ? o.path : null
+  } catch {
+    return null
+  }
+}
+
+// ── Composer：项目选择（开始后锁定）+ 推理档位 + 输入 ──────
+function ModeMenu(): JSX.Element {
+  const permissionMode = useStore((st) => st.permissionMode)
+  const setMode = useStore((st) => st.setMode)
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mode-menu">
+      <button
+        className={'mode-chip mode-' + permissionMode}
+        onClick={() => setOpen((o) => !o)}
+        title="权限模式 · Shift+Ctrl+M 切换"
+      >
+        <span className="dot" />
+        {modeLabel(permissionMode)}
+        <span className="mc-caret">{open ? '▾' : '▴'}</span>
+      </button>
+      {open && (
+        <>
+          <div className="menu-backdrop" onClick={() => setOpen(false)} />
+          <div className="mode-pop">
+            <div className="mp-h">权限模式</div>
+            {MODES.map((m) => (
+              <button
+                key={m.id}
+                className={'mp-item' + (permissionMode === m.id ? ' on' : '')}
+                onClick={() => {
+                  setMode(m.id)
+                  setOpen(false)
+                }}
+              >
+                <span className="mp-text">
+                  <b>{m.label}</b>
+                  <span className="mp-desc">{m.desc}</span>
+                </span>
+                <span className="mp-right">
+                  {permissionMode === m.id && <span className="mp-check">✓</span>}
+                  <span className="mp-key">{m.key}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function Composer(): JSX.Element {
+  const { send, abort, running, reasoning, setReasoning, pickProject } = useStore()
+  const cur = useStore((st) => st.active())
+  const busy = !!(cur && running[cur.id])
+  const hasProject = !!cur?.projectRoot
+  const locked = !!cur?.started
+  const root = cur?.projectRoot ?? null
+
+  return (
+    <div className="composer">
+      <div className="seg-row">
+        <button
+          className={'proj-chip' + (hasProject ? '' : ' need') + (locked ? ' locked' : '')}
+          onClick={() => !locked && pickProject()}
+          title={locked ? '会话已开始，项目目录已锁定' : '选择 / 更改项目目录'}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M3 7l2-3h6l2 3h6v12H3z" />
+          </svg>
+          {cur?.projectName ?? '选择项目目录'}
+          {locked ? (
+            <svg className="lk" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
+              <rect x="5" y="11" width="14" height="9" rx="2" />
+              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+            </svg>
+          ) : (
+            <span className="ch-hint">{hasProject ? '可更改' : '必选'}</span>
+          )}
+        </button>
+        <div className="spacer" />
+        <ModeMenu />
+        <div className={'mini-seg' + (reasoning === 'deep' ? ' deep' : '')}>
+          {(['fast', 'balanced', 'deep'] as ReasoningMode[]).map((m) => (
+            <button key={m} className={reasoning === m ? 'on' : ''} onClick={() => setReasoning(m)}>
+              {MODE_LABEL[m]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <RichInput
+        root={root}
+        busy={busy}
+        onStop={abort}
+        onSubmit={(t, a) => void send(t, a)}
+        placeholder={hasProject ? '描述任务，回车发送 · / 命令 · @ 文件 · 可粘贴/拖入图片…' : '请先选择项目目录，再开始对话…'}
+        sendTitle="发送"
+      />
+    </div>
+  )
+}

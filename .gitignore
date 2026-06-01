@@ -1,0 +1,124 @@
+# ──────────────────────────────────────────────
+# SeekCode .gitignore
+# ──────────────────────────────────────────────
+
+# 依赖
+node_modules/
+.pnp
+.pnp.js
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+
+# 构建产物（electron-vite 输出 / electron-builder 打包）
+out/
+dist/
+dist-*/
+dist-electron/
+release/
+build/Release/
+*.asar
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.snap
+*.blockmap
+*.nupkg
+*.msi
+*.pkg
+*.zip
+*.7z
+*.tar.gz
+*.tar.xz
+
+# TypeScript 增量编译缓存
+*.tsbuildinfo
+
+# 缓存
+.cache/
+.vite/
+.eslintcache
+.npm/
+.parcel-cache/
+
+# ──────────────────────────────────────────────
+# 敏感信息 / 密钥（绝不提交）
+#   注：运行时 DeepSeek API Key 通过 Electron safeStorage 加密存于系统
+#   userData 目录，本就不在仓库内；以下规则防止任何本地密钥误入版本库。
+# ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.local
+secrets.*
+*.pem
+*.key
+*.p12
+*.keystore
+*.mobileprovision
+config.local.*
+.api-key
+apikey.txt
+
+# 本地会话 / 用户数据（如有人把 userData 软链到工程内）
+userData/
+*.sqlite
+*.sqlite3
+sessions.json
+tasks.json
+config.json
+
+# ──────────────────────────────────────────────
+# 日志 / 临时文件
+# ──────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+tmp/
+temp/
+tmp_*
+*.tmp
+*.pid
+
+# ──────────────────────────────────────────────
+# 测试 / 覆盖率
+# ──────────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ──────────────────────────────────────────────
+# 编辑器 / IDE
+# ──────────────────────────────────────────────
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# ──────────────────────────────────────────────
+# 操作系统
+# ──────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ──────────────────────────────────────────────
+# Claude Code 本地工具配置（个人/机器相关，不随仓库分发）
+# ──────────────────────────────────────────────
+.claude/settings.local.json
+.claude/launch.json
+技术方案文档.md

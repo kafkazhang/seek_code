@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SeekCode · 深海声呐式 AI 编程工作台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  /* ════════════════════════════════════════════════════
+     SeekCode — Deep-Sea Sonar Terminal
+     Palette: abyssal blue-black · bioluminescent cyan
+              · amber reserved for "treasure" (cost/savings)
+     ════════════════════════════════════════════════════ */
+  :root{
+    --abyss:#05080f;
+    --deep:#0a1322;
+    --deep-2:#0d182b;
+    --surface:#10203a;
+    --surface-2:#16294a;
+    --line:rgba(120,170,225,.10);
+    --line-2:rgba(120,170,225,.16);
+
+    --text:#d7e6f5;
+    --dim:#7e96b4;
+    --faint:#48607e;
+
+    --sonar:#27e7d4;          /* bioluminescent cyan-teal */
+    --sonar-bright:#5ffaeb;
+    --sonar-deep:#0e8c86;
+    --blue:#4d9bff;           /* electric structural blue */
+    --blue-deep:#1f4a8a;
+
+    --amber:#ffc24b;          /* TREASURE — cost / savings only */
+    --amber-deep:#c8821a;
+    --coral:#ff7d5c;
+    --danger:#ff5470;
+    --good:#3fe6a4;
+
+    --r:10px;
+    --r-lg:16px;
+    --glow-sonar:0 0 0 1px rgba(39,231,212,.35), 0 0 24px -4px rgba(39,231,212,.45);
+    --shadow:0 18px 50px -20px rgba(0,0,0,.8);
+    --mono:"JetBrains Mono",ui-monospace,monospace;
+    --disp:"Chakra Petch",sans-serif;
+    --ui:"Sora",sans-serif;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:var(--ui);
+    background:var(--abyss);
+    color:var(--text);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.45;
+  }
+  ::selection{background:rgba(39,231,212,.28);color:#fff;}
+
+  /* ── Background atmosphere: light filtering into the deep ── */
+  .bg-glow{
+    position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(39,231,212,.10), transparent 55%),
+      radial-gradient(90% 70% at 82% 8%, rgba(77,155,255,.10), transparent 50%),
+      radial-gradient(140% 120% at 50% 120%, rgba(8,30,55,.6), transparent 60%),
+      linear-gradient(180deg,#06101f 0%,#05080f 60%,#04060c 100%);
+  }
+  .bg-grid{
+    position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background-image:
+      linear-gradient(rgba(120,170,225,.05) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(120,170,225,.05) 1px,transparent 1px);
+    background-size:46px 46px;
+    -webkit-mask-image:radial-gradient(120% 100% at 50% 0%,#000 25%,transparent 78%);
+            mask-image:radial-gradient(120% 100% at 50% 0%,#000 25%,transparent 78%);
+  }
+  .bg-grain{
+    position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ── App shell ── */
+  .app{
+    position:relative;z-index:1;height:100vh;
+    display:grid;
+    grid-template-rows:46px 1fr 30px;
+  }
+
+  /* ════════ TITLE BAR ════════ */
+  .titlebar{
+    display:flex;align-items:center;gap:18px;
+    padding:0 16px;
+    background:linear-gradient(180deg,rgba(16,32,58,.7),rgba(10,19,34,.55));
+    border-bottom:1px solid var(--line);
+    backdrop-filter:blur(14px);
+  }
+  .dots{display:flex;gap:8px;}
+  .dots i{width:11px;height:11px;border-radius:50%;display:block;}
+  .dots i:nth-child(1){background:#ff5f57;}
+  .dots i:nth-child(2){background:#febc2e;}
+  .dots i:nth-child(3){background:#28c840;}
+
+  .brand{display:flex;align-items:center;gap:11px;}
+  .sonar-mark{position:relative;width:26px;height:26px;display:grid;place-items:center;}
+  .sonar-mark .core{width:8px;height:8px;border-radius:50%;background:var(--sonar);box-shadow:0 0 12px var(--sonar);z-index:2;}
+  .sonar-mark .ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--sonar);opacity:0;animation:ping 3s ease-out infinite;}
+  .sonar-mark .ring:nth-child(3){animation-delay:1.5s;}
+  @keyframes ping{0%{transform:scale(.25);opacity:.9;}80%{opacity:0;}100%{transform:scale(1.4);opacity:0;}}
+  .brand b{font-family:var(--disp);font-weight:700;font-size:16px;letter-spacing:.06em;}
+  .brand b span{color:var(--sonar);}
+  .brand small{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.04em;}
+
+  .crumb{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--dim);}
+  .crumb .sep{color:var(--faint);}
+  .crumb .repo{color:var(--text);}
+  .crumb .branch{color:var(--sonar);}
+
+  .spacer{flex:1;}
+
+  /* engine toggle */
+  .engine{
+    display:flex;align-items:center;gap:0;
+    background:var(--deep);border:1px solid var(--line-2);border-radius:999px;
+    padding:3px;position:relative;
+  }
+  .engine button{
+    position:relative;z-index:2;border:0;background:transparent;cursor:pointer;
+    font-family:var(--disp);font-weight:600;font-size:11px;letter-spacing:.08em;
+    color:var(--dim);padding:6px 14px;border-radius:999px;transition:color .25s;
+    display:flex;align-items:center;gap:7px;text-transform:uppercase;
+  }
+  .engine button .dt{width:6px;height:6px;border-radius:50%;background:currentColor;}
+  .engine button.on{color:var(--abyss);}
+  .engine .pill{
+    position:absolute;top:3px;left:3px;height:calc(100% - 6px);border-radius:999px;z-index:1;
+    background:linear-gradient(180deg,var(--sonar-bright),var(--sonar));
+    box-shadow:0 0 18px -2px rgba(39,231,212,.6);
+    transition:transform .35s cubic-bezier(.5,1.4,.4,1),width .35s;
+  }
+
+  .model-sel{
+    display:flex;align-items:center;gap:9px;background:var(--deep);
+    border:1px solid var(--line-2);border-radius:999px;padding:5px 6px 5px 13px;cursor:pointer;
+    transition:border-color .2s;
+  }
+  .model-sel:hover{border-color:var(--sonar-deep);}
+  .model-sel .m-icon{width:7px;height:7px;border-radius:50%;background:var(--blue);box-shadow:0 0 8px var(--blue);}
+  .model-sel b{font-family:var(--disp);font-size:12px;letter-spacing:.04em;}
+  .model-sel .v{font-family:var(--mono);font-size:10px;color:var(--faint);}
+  .model-sel .chev{color:var(--faint);font-size:9px;}
+  .model-sel .key{font-family:var(--mono);font-size:9px;color:var(--good);}
+  .privacy{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:.03em;color:var(--sonar);background:rgba(39,231,212,.06);border:1px solid rgba(39,231,212,.22);border-radius:999px;padding:5px 11px;cursor:default;}
+  .privacy svg{width:12px;height:12px;}
+
+  /* ════════ WORKSPACE ════════ */
+  .workspace{
+    display:grid;
+    grid-template-columns:54px 244px 1fr 318px;
+    min-height:0;
+  }
+
+  /* activity bar */
+  .activity{
+    background:rgba(8,16,28,.55);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 0;
+  }
+  .activity .act{
+    width:38px;height:38px;border-radius:11px;display:grid;place-items:center;cursor:pointer;
+    color:var(--faint);transition:.2s;position:relative;border:1px solid transparent;
+  }
+  .activity .act svg{width:19px;height:19px;}
+  .activity .act:hover{color:var(--dim);background:rgba(120,170,225,.06);}
+  .activity .act.on{color:var(--sonar);background:rgba(39,231,212,.08);border-color:rgba(39,231,212,.25);}
+  .activity .act.on::before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--sonar);box-shadow:0 0 10px var(--sonar);}
+  .activity .grow{flex:1;}
+  .activity .av{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--blue-deep),var(--sonar-deep));display:grid;place-items:center;font-family:var(--disp);font-weight:700;font-size:12px;color:#fff;}
+
+  /* explorer / sidebar */
+  .sidebar{background:rgba(9,17,30,.5);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+  .side-h{padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between;}
+  .side-h h3{font-family:var(--disp);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  .side-h .badge{font-family:var(--mono);font-size:9px;color:var(--sonar);border:1px solid rgba(39,231,212,.25);padding:2px 6px;border-radius:6px;background:rgba(39,231,212,.06);}
+
+  .scroll{overflow-y:auto;min-height:0;}
+  .scroll::-webkit-scrollbar{width:8px;height:8px;}
+  .scroll::-webkit-scrollbar-thumb{background:rgba(120,170,225,.16);border-radius:8px;}
+  .scroll::-webkit-scrollbar-thumb:hover{background:rgba(120,170,225,.3);}
+
+  .tree{padding:2px 8px 14px;font-size:12.5px;}
+  .tree .row{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:7px;cursor:pointer;color:var(--dim);white-space:nowrap;}
+  .tree .row:hover{background:rgba(120,170,225,.06);color:var(--text);}
+  .tree .row.active{background:rgba(39,231,212,.10);color:var(--text);}
+  .tree .row.active .fi{color:var(--sonar);}
+  .tree .ind{padding-left:18px;}
+  .tree .ind2{padding-left:32px;}
+  .tree .fi{width:14px;text-align:center;color:var(--faint);font-size:11px;}
+  .tree .dir{color:var(--blue);}
+  .tree .tag{margin-left:auto;font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:5px;}
+  .tree .tag.m{color:var(--amber);background:rgba(255,194,75,.1);}
+  .tree .tag.a{color:var(--good);background:rgba(63,230,164,.1);}
+
+  .side-sec{border-top:1px solid var(--line);padding:12px 16px;}
+  .side-sec h4{font-family:var(--disp);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:9px;display:flex;align-items:center;gap:7px;}
+  .skill-chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--dim);background:rgba(120,170,225,.05);border:1px solid var(--line);padding:4px 9px;border-radius:999px;margin:0 5px 5px 0;cursor:pointer;transition:.2s;}
+  .skill-chip:hover{border-color:var(--sonar-deep);color:var(--text);}
+  .skill-chip .d{width:5px;height:5px;border-radius:50%;background:var(--sonar);}
+  .skill-chip.mcp .d{background:var(--blue);}
+
+  /* ════════ CENTER ════════ */
+  .center{display:flex;flex-direction:column;min-width:0;background:var(--abyss);}
+  .ed-tabs{display:flex;align-items:stretch;background:rgba(8,16,28,.5);border-bottom:1px solid var(--line);}
+  .ed-tab{display:flex;align-items:center;gap:8px;padding:0 16px;height:38px;font-size:12.5px;color:var(--dim);cursor:pointer;border-right:1px solid var(--line);position:relative;font-family:var(--mono);}
+  .ed-tab .fi{color:var(--faint);font-size:11px;}
+  .ed-tab.on{color:var(--text);background:var(--abyss);}
+  .ed-tab.on::after{content:"";position:absolute;left:0;right:0;top:-1px;height:2px;background:var(--sonar);box-shadow:0 0 8px var(--sonar);}
+  .ed-tab.on .fi{color:var(--sonar);}
+  .ed-tab .x{color:var(--faint);font-size:13px;margin-left:2px;}
+  .ed-tab .dot{width:6px;height:6px;border-radius:50%;background:var(--amber);margin-left:2px;}
+
+  .editor-wrap{flex:1;min-height:0;display:flex;flex-direction:column;}
+  .editor{flex:1;min-height:0;overflow:auto;font-family:var(--mono);font-size:13px;line-height:1.7;padding:14px 0 18px;position:relative;}
+  .editor::-webkit-scrollbar{width:10px;height:10px;}
+  .editor::-webkit-scrollbar-thumb{background:rgba(120,170,225,.14);border-radius:8px;}
+  .cl{display:flex;padding:0 18px;white-space:pre;}
+  .cl:hover{background:rgba(120,170,225,.035);}
+  .ln{width:34px;flex-shrink:0;text-align:right;padding-right:18px;color:var(--faint);user-select:none;opacity:.7;}
+  .code{flex:1;}
+  .cl.add{background:rgba(63,230,164,.07);}
+  .cl.add .ln{color:var(--good);}
+  .cl.add::before{content:"+";position:absolute;margin-left:-10px;color:var(--good);}
+  /* token colors */
+  .kw{color:#ff8fb0;}     /* keyword */
+  .fn{color:var(--sonar-bright);}
+  .ty{color:var(--amber);}
+  .st{color:#9ff0a8;}     /* string */
+  .cm{color:var(--faint);font-style:italic;}
+  .nu{color:var(--coral);}
+  .pr{color:var(--blue);}
+  .op{color:var(--dim);}
+  .ghost{color:var(--faint);font-style:italic;opacity:.75;background:rgba(39,231,212,.05);border-radius:3px;padding:0 2px;position:relative;}
+  .ghost::after{content:"⇥ FIM";font-family:var(--ui);font-size:9px;font-style:normal;color:var(--sonar);margin-left:8px;border:1px solid rgba(39,231,212,.3);border-radius:4px;padding:0 4px;vertical-align:middle;opacity:.9;}
+  .caret{display:inline-block;width:2px;height:16px;background:var(--sonar);vertical-align:-3px;animation:blink 1.1s step-end infinite;box-shadow:0 0 8px var(--sonar);}
+  @keyframes blink{50%{opacity:0;}}
+
+  /* bottom panel */
+  .panel{height:288px;border-top:1px solid var(--line-2);background:rgba(8,15,27,.7);display:flex;flex-direction:column;}
+  .panel-tabs{display:flex;align-items:center;border-bottom:1px solid var(--line);padding:0 6px;gap:2px;}
+  .ptab{font-family:var(--disp);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:9px 13px;cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:7px;}
+  .ptab:hover{color:var(--dim);}
+  .ptab.on{color:var(--sonar);border-bottom-color:var(--sonar);}
+  .ptab .ct{font-family:var(--mono);font-size:9px;background:rgba(39,231,212,.12);color:var(--sonar);border-radius:5px;padding:1px 5px;}
+  .panel-foot{margin-left:auto;display:flex;align-items:center;gap:10px;padding-right:8px;}
+
+  .panel-body{flex:1;min-height:0;overflow-y:auto;padding:14px 16px;}
+  .panel-body::-webkit-scrollbar{width:8px;}
+  .panel-body::-webkit-scrollbar-thumb{background:rgba(120,170,225,.14);border-radius:8px;}
+
+  /* agent conversation */
+  .msg{display:flex;gap:11px;margin-bottom:16px;}
+  .msg .ic{width:26px;height:26px;border-radius:8px;flex-shrink:0;display:grid;place-items:center;font-family:var(--disp);font-weight:700;font-size:11px;}
+  .msg.user .ic{background:rgba(77,155,255,.14);color:var(--blue);border:1px solid rgba(77,155,255,.3);}
+  .msg.bot .ic{background:linear-gradient(135deg,var(--sonar-deep),var(--blue-deep));color:#fff;box-shadow:0 0 14px -3px rgba(39,231,212,.5);}
+  .msg .body{flex:1;min-width:0;}
+  .msg .who{font-size:11px;color:var(--faint);margin-bottom:4px;font-family:var(--mono);display:flex;align-items:center;gap:8px;}
+  .msg .who b{color:var(--dim);font-family:var(--ui);font-weight:600;}
+  .reason-tag{font-family:var(--disp);font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:1px 7px;border-radius:5px;display:inline-flex;align-items:center;gap:5px;}
+  .reason-tag.fast{color:var(--sonar);background:rgba(39,231,212,.1);border:1px solid rgba(39,231,212,.25);}
+  .reason-tag.deep{color:var(--amber);background:rgba(255,194,75,.1);border:1px solid rgba(255,194,75,.25);}
+  .msg p{font-size:13px;color:var(--text);margin-bottom:7px;}
+  .msg code{font-family:var(--mono);font-size:12px;background:rgba(120,170,225,.1);padding:1px 5px;border-radius:4px;color:var(--sonar-bright);}
+
+  .tool-call{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11.5px;color:var(--dim);background:rgba(13,24,43,.7);border:1px solid var(--line);border-left:2px solid var(--sonar-deep);padding:7px 11px;border-radius:8px;margin:5px 0;}
+  .tool-call .tl{color:var(--sonar);}
+  .tool-call .arg{color:var(--text);}
+  .tool-call .res{margin-left:auto;color:var(--good);font-size:10px;}
+  .tool-call.run{border-left-color:var(--amber);}
+  .tool-call.run .tl{color:var(--amber);}
+
+  .typing{display:inline-flex;gap:3px;align-items:center;}
+  .typing i{width:5px;height:5px;border-radius:50%;background:var(--sonar);animation:bounce 1.2s infinite;}
+  .typing i:nth-child(2){animation-delay:.15s;}
+  .typing i:nth-child(3){animation-delay:.3s;}
+  @keyframes bounce{0%,60%,100%{transform:translateY(0);opacity:.4;}30%{transform:translateY(-5px);opacity:1;}}
+
+  /* composer */
+  .composer{border-top:1px solid var(--line);padding:10px 12px;display:flex;align-items:center;gap:10px;background:rgba(10,19,34,.6);}
+  .composer .inp{flex:1;display:flex;align-items:center;gap:8px;background:var(--deep);border:1px solid var(--line-2);border-radius:10px;padding:9px 13px;}
+  .composer .inp:focus-within{border-color:var(--sonar-deep);box-shadow:0 0 0 3px rgba(39,231,212,.08);}
+  .composer .inp span{color:var(--faint);font-size:13px;}
+  .composer .inp .slash{color:var(--sonar);font-family:var(--mono);}
+  .composer .send{width:36px;height:36px;border-radius:10px;border:0;background:linear-gradient(180deg,var(--sonar-bright),var(--sonar));display:grid;place-items:center;cursor:pointer;color:var(--abyss);box-shadow:0 0 18px -3px rgba(39,231,212,.5);}
+  .composer .send:hover{filter:brightness(1.1);}
+
+  /* terminal view (hidden by default) */
+  .term{display:none;font-family:var(--mono);font-size:12.5px;line-height:1.7;color:var(--dim);}
+  .term .pmt{color:var(--sonar);}
+  .term .pmt .p2{color:var(--blue);}
+  .term .out{color:var(--dim);}
+  .term .ok{color:var(--good);}
+  .term .warn{color:var(--amber);}
+
+  /* ════════ RIGHT RAIL ════════ */
+  .rail{background:rgba(9,17,30,.55);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow-y:auto;}
+  .rail::-webkit-scrollbar{width:8px;}
+  .rail::-webkit-scrollbar-thumb{background:rgba(120,170,225,.14);border-radius:8px;}
+  .card{margin:12px;padding:14px;background:linear-gradient(180deg,rgba(18,32,58,.6),rgba(13,24,43,.5));border:1px solid var(--line);border-radius:var(--r-lg);position:relative;overflow:hidden;}
+  .card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;}
+  .card-h h4{font-family:var(--disp);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;display:flex;align-items:center;gap:8px;}
+  .card-h h4 .ic{color:var(--sonar);}
+  .card-h .live{font-family:var(--mono);font-size:9px;color:var(--good);display:flex;align-items:center;gap:5px;}
+  .card-h .live::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 8px var(--good);animation:pulse 1.6s infinite;}
+  @keyframes pulse{50%{opacity:.3;}}
+
+  /* reasoning scheduler */
+  .seg{display:flex;background:var(--deep);border:1px solid var(--line-2);border-radius:10px;padding:3px;position:relative;}
+  .seg button{flex:1;border:0;background:transparent;cursor:pointer;font-family:var(--disp);font-weight:600;font-size:11px;letter-spacing:.05em;color:var(--dim);padding:7px 0;z-index:2;transition:color .25s;position:relative;}
+  .seg button.on{color:var(--abyss);}
+  .seg .knob{position:absolute;top:3px;height:calc(100% - 6px);border-radius:8px;z-index:1;background:linear-gradient(180deg,var(--sonar-bright),var(--sonar));box-shadow:0 0 16px -3px rgba(39,231,212,.6);transition:transform .35s cubic-bezier(.5,1.4,.4,1);}
+  .seg.deep .knob{background:linear-gradient(180deg,#ffd479,var(--amber));box-shadow:0 0 16px -3px rgba(255,194,75,.6);}
+
+  .dive{margin-top:14px;height:70px;position:relative;border-radius:10px;overflow:hidden;background:linear-gradient(180deg,#0a1b30,#040a14);border:1px solid var(--line);}
+  .dive .lvl{position:absolute;left:0;right:0;border-top:1px dashed rgba(120,170,225,.12);font-family:var(--mono);font-size:8px;color:var(--faint);padding:2px 6px;}
+  .dive .sub{position:absolute;left:50%;transform:translateX(-50%);width:14px;height:14px;transition:top .5s cubic-bezier(.5,1.2,.4,1);z-index:3;}
+  .dive .sub::before{content:"◆";color:var(--amber);font-size:13px;text-shadow:0 0 10px var(--amber);}
+  .dive .beam{position:absolute;left:50%;top:0;width:1px;background:linear-gradient(var(--sonar),transparent);transition:height .5s;transform:translateX(-50%);opacity:.5;}
+  .budget{display:flex;justify-content:space-between;margin-top:11px;font-family:var(--mono);font-size:10px;color:var(--faint);}
+  .budget b{color:var(--text);}
+  .budget .v{color:var(--sonar);}
+
+  /* context depth gauge */
+  .gauge{display:flex;align-items:flex-end;gap:12px;}
+  .gauge .num{font-family:var(--disp);font-weight:700;font-size:30px;line-height:1;color:var(--text);letter-spacing:-.01em;}
+  .gauge .num .u{font-size:13px;color:var(--dim);font-weight:500;}
+  .gauge .meta{flex:1;text-align:right;font-family:var(--mono);font-size:10px;color:var(--faint);}
+  .gauge .meta b{color:var(--sonar);display:block;font-size:12px;}
+  .bar{height:9px;border-radius:6px;background:var(--deep);border:1px solid var(--line);margin-top:11px;overflow:hidden;position:relative;}
+  .bar .fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--sonar-deep),var(--sonar));box-shadow:0 0 12px -2px var(--sonar);width:0;transition:width 1.4s cubic-bezier(.2,.8,.2,1);}
+  .bar .tick{position:absolute;top:0;bottom:0;width:1px;background:rgba(120,170,225,.25);}
+  .gauge-legend{display:flex;justify-content:space-between;margin-top:7px;font-family:var(--mono);font-size:9px;color:var(--faint);}
+  .strat{margin-top:11px;display:flex;gap:6px;}
+  .strat .s{flex:1;text-align:center;font-family:var(--mono);font-size:9px;padding:5px 0;border-radius:7px;border:1px solid var(--line);color:var(--faint);}
+  .strat .s.on{color:var(--sonar);border-color:rgba(39,231,212,.3);background:rgba(39,231,212,.07);}
+
+  /* cost / cache — the TREASURE card */
+  .card.treasure{border-color:rgba(255,194,75,.22);background:linear-gradient(180deg,rgba(48,38,18,.5),rgba(28,22,12,.4));}
+  .card.treasure::before{content:"";position:absolute;top:-40%;right:-20%;width:160px;height:160px;background:radial-gradient(circle,rgba(255,194,75,.16),transparent 65%);pointer-events:none;}
+  .card.treasure .card-h h4 .ic{color:var(--amber);}
+  .cost-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+  .stat{background:rgba(10,19,34,.5);border:1px solid var(--line);border-radius:10px;padding:11px;}
+  .stat .lab{font-family:var(--mono);font-size:9px;color:var(--faint);letter-spacing:.04em;text-transform:uppercase;margin-bottom:5px;}
+  .stat .big{font-family:var(--disp);font-weight:700;font-size:23px;line-height:1;}
+  .stat .big.c{color:var(--sonar);}
+  .stat .big.a{color:var(--amber);}
+  .stat .sub{font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:4px;}
+  .saved{margin-top:11px;background:rgba(255,194,75,.08);border:1px solid rgba(255,194,75,.2);border-radius:10px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;}
+  .saved .t{font-size:11px;color:var(--dim);}
+  .saved .t b{color:var(--amber);font-family:var(--disp);font-size:16px;}
+  .saved .pct{font-family:var(--mono);font-size:10px;color:var(--amber);background:rgba(255,194,75,.12);padding:2px 7px;border-radius:6px;}
+
+  /* parallel subagent tasks */
+  .task{background:rgba(10,19,34,.5);border:1px solid var(--line);border-radius:11px;padding:11px;margin-bottom:9px;position:relative;overflow:hidden;}
+  .task .th{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .task .th .tn{font-size:12px;color:var(--text);font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .task .loc{font-family:var(--disp);font-size:8px;letter-spacing:.06em;padding:2px 6px;border-radius:5px;text-transform:uppercase;}
+  .task .loc.cloud{color:var(--blue);background:rgba(77,155,255,.12);}
+  .task .loc.local{color:var(--sonar);background:rgba(39,231,212,.12);}
+  .task .pbar{height:5px;border-radius:4px;background:var(--deep);overflow:hidden;}
+  .task .pbar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--sonar-deep),var(--sonar));}
+  .task.cloud .pbar i{background:linear-gradient(90deg,var(--blue-deep),var(--blue));}
+  .task .tf{display:flex;justify-content:space-between;margin-top:7px;font-family:var(--mono);font-size:9px;color:var(--faint);}
+  .task .tf .st{color:var(--dim);}
+  .task.done .pbar i{background:linear-gradient(90deg,var(--sonar-deep),var(--good));}
+  .task.done .tf .st{color:var(--good);}
+
+  /* plan steps */
+  .plan .step{display:flex;gap:10px;padding:7px 0;position:relative;}
+  .plan .step .mk{width:20px;height:20px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-family:var(--mono);font-size:10px;border:1px solid var(--line-2);color:var(--faint);background:var(--deep);z-index:2;}
+  .plan .step.done .mk{background:var(--sonar);color:var(--abyss);border-color:var(--sonar);box-shadow:0 0 10px -1px var(--sonar);}
+  .plan .step.now .mk{border-color:var(--amber);color:var(--amber);}
+  .plan .step:not(:last-child)::before{content:"";position:absolute;left:9.5px;top:24px;bottom:-4px;width:1px;background:var(--line-2);}
+  .plan .step .tx{font-size:12px;color:var(--dim);padding-top:1px;}
+  .plan .step.done .tx{color:var(--text);}
+  .plan .step.now .tx{color:var(--text);}
+  .plan .step .ms{font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:2px;}
+
+  /* ════════ STATUS BAR ════════ */
+  .statusbar{
+    display:flex;align-items:center;gap:0;padding:0 4px;font-family:var(--mono);font-size:11px;
+    background:linear-gradient(180deg,rgba(13,24,43,.8),rgba(8,15,27,.9));border-top:1px solid var(--line-2);
+  }
+  .st-item{display:flex;align-items:center;gap:7px;padding:0 12px;height:100%;color:var(--dim);border-right:1px solid var(--line);}
+  .st-item .d{width:7px;height:7px;border-radius:50%;}
+  .st-item.eng .d{background:var(--sonar);box-shadow:0 0 8px var(--sonar);}
+  .st-item b{color:var(--text);}
+  .st-item .sv{color:var(--amber);}
+  .st-item .cy{color:var(--sonar);}
+  .st-item.grow{flex:1;border-right:0;}
+  .st-item.right{border-right:0;border-left:1px solid var(--line);}
+  .st-item svg{width:13px;height:13px;}
+
+  /* staggered load */
+  .reveal{opacity:0;transform:translateY(10px);animation:rise .6s cubic-bezier(.2,.8,.2,1) forwards;}
+  @keyframes rise{to{opacity:1;transform:none;}}
+
+  @media (max-width:1180px){
+    .workspace{grid-template-columns:54px 0 1fr 300px;}
+    .sidebar{display:none;}
+  }
+</style>
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <div class="bg-grid"></div>
+  <div class="bg-grain"></div>
+
+  <div class="app">
+
+    <!-- ══════════ TITLE BAR ══════════ -->
+    <header class="titlebar">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <div class="brand">
+        <div class="sonar-mark">
+          <div class="core"></div><div class="ring"></div><div class="ring"></div>
+        </div>
+        <div>
+          <b>Seek<span>Code</span></b>
+          <small>v0.1 · 深度求索工作台</small>
+        </div>
+      </div>
+      <div class="crumb">
+        <span class="repo">~/seek_code</span><span class="sep">/</span>
+        <span>src/model</span><span class="sep">/</span>
+        <span class="branch">⎇ feat/cache-layer</span>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="engine" id="engine" title="结对=同步实时结对 · 后台=本地并行委派（均在本机运行）">
+        <div class="pill" id="pill"></div>
+        <button class="on" data-mode="pair"><span class="dt"></span>结对模式</button>
+        <button data-mode="bg"><span class="dt"></span>后台模式</button>
+      </div>
+
+      <div class="privacy" title="纯本地运行 · 代码不出本机 · 仅 LLM 推理走网络">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        纯本地
+      </div>
+
+      <div class="model-sel" title="已配置 DeepSeek API Key — 唯一需要的配置">
+        <span class="m-icon"></span>
+        <b>DeepSeek-V4</b>
+        <span class="v">reasoner</span>
+        <span class="key">· key ✓</span>
+        <span class="chev">▾</span>
+      </div>
+    </header>
+
+    <!-- ══════════ WORKSPACE ══════════ -->
+    <div class="workspace">
+
+      <!-- activity bar -->
+      <nav class="activity reveal" style="animation-delay:.05s">
+        <div class="act on" title="资源管理器"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7l2-3h6l2 3h6v12H3z"/></svg></div>
+        <div class="act" title="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></div>
+        <div class="act" title="源代码管理"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M8.5 6H14a4 4 0 0 1 4 4v0"/></svg></div>
+        <div class="act" title="Agent 任务"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg></div>
+        <div class="act" title="MCP 与扩展"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2l3 6 6 1-4.5 4.3L18 20l-6-3-6 3 1.5-6.7L3 9l6-1z"/></svg></div>
+        <div class="grow"></div>
+        <div class="act" title="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></div>
+        <div class="av">求</div>
+      </nav>
+
+      <!-- explorer -->
+      <aside class="sidebar reveal" style="animation-delay:.12s">
+        <div class="side-h">
+          <h3>资源管理器</h3>
+          <span class="badge">索引 847K</span>
+        </div>
+        <div class="scroll" style="flex:1">
+          <div class="tree">
+            <div class="row"><span class="fi dir">▾</span><span>src</span></div>
+            <div class="row ind"><span class="fi dir">▾</span><span>model</span></div>
+            <div class="row ind2 active"><span class="fi">◈</span><span>gateway.ts</span><span class="tag m">M</span></div>
+            <div class="row ind2"><span class="fi">◈</span><span>cache.ts</span><span class="tag a">A</span></div>
+            <div class="row ind2"><span class="fi">◈</span><span>router.ts</span></div>
+            <div class="row ind2"><span class="fi">◈</span><span>fim.ts</span></div>
+            <div class="row ind"><span class="fi dir">▸</span><span>engine</span></div>
+            <div class="row ind"><span class="fi dir">▸</span><span>codebase</span></div>
+            <div class="row ind"><span class="fi dir">▸</span><span>orchestrator</span></div>
+            <div class="row"><span class="fi dir">▾</span><span>electron</span></div>
+            <div class="row ind"><span class="fi">◈</span><span>main.ts</span></div>
+            <div class="row ind"><span class="fi">◈</span><span>preload.ts</span></div>
+            <div class="row"><span class="fi">◈</span><span>SEEK.md</span></div>
+            <div class="row"><span class="fi">◈</span><span>seek.env.toml</span></div>
+          </div>
+        </div>
+        <div class="side-sec">
+          <h4>已激活 SKILLS / MCP</h4>
+          <span class="skill-chip"><span class="d"></span>code-review</span>
+          <span class="skill-chip"><span class="d"></span>frontend-design</span>
+          <span class="skill-chip mcp"><span class="d"></span>postgres</span>
+          <span class="skill-chip mcp"><span class="d"></span>browser</span>
+        </div>
+      </aside>
+
+      <!-- center: editor + panel -->
+      <main class="center reveal" style="animation-delay:.18s">
+        <div class="ed-tabs">
+          <div class="ed-tab on"><span class="fi">◈</span>gateway.ts<span class="dot"></span></div>
+          <div class="ed-tab"><span class="fi">◈</span>cache.ts</div>
+          <div class="ed-tab"><span class="fi">◈</span>router.ts<span class="x">×</span></div>
+        </div>
+
+        <div class="editor-wrap">
+          <div class="editor" id="editor">
+<div class="cl"><span class="ln">14</span><span class="code"><span class="cm">// model/gateway.ts — 缓存优先的 Prompt 装配（最大化 DeepSeek-V4 前缀命中）</span></span></div>
+<div class="cl"><span class="ln">15</span><span class="code"><span class="kw">export class</span> <span class="ty">CacheManager</span> {</span></div>
+<div class="cl"><span class="ln">16</span><span class="code">  <span class="cm">/** 稳定区永不变动 → 跨会话复用 KV 缓存 */</span></span></div>
+<div class="cl"><span class="ln">17</span><span class="code">  <span class="fn">assemble</span>(<span class="pr">ctx</span>: <span class="ty">SessionContext</span>): <span class="ty">PromptLayers</span> {</span></div>
+<div class="cl"><span class="ln">18</span><span class="code">    <span class="kw">return</span> {</span></div>
+<div class="cl add"><span class="ln">19</span><span class="code">      <span class="pr">stable</span>:     [<span class="ty">SYSTEM_PROMPT</span>, <span class="ty">TOOL_SCHEMA</span>, <span class="ty">ROLE</span>],       <span class="cm">// 命中率 ~98%</span></span></div>
+<div class="cl add"><span class="ln">20</span><span class="code">      <span class="pr">semiStable</span>: [<span class="pr">ctx</span>.<span class="fn">codeMap</span>(), <span class="pr">ctx</span>.<span class="fn">memory</span>(<span class="st">"SEEK.md"</span>)], <span class="cm">// 代码变更才失效</span></span></div>
+<div class="cl add"><span class="ln">21</span><span class="code">      <span class="pr">volatile</span>:   [...<span class="pr">ctx</span>.<span class="pr">turns</span>, <span class="pr">ctx</span>.<span class="pr">activeDiff</span>, <span class="pr">input</span>],   <span class="cm">// 每轮变化</span></span></div>
+<div class="cl"><span class="ln">22</span><span class="code">    };</span></div>
+<div class="cl"><span class="ln">23</span><span class="code">  }</span></div>
+<div class="cl"><span class="ln">24</span><span class="code"></span></div>
+<div class="cl"><span class="ln">25</span><span class="code">  <span class="cm">/** 裁剪上下文：只动 volatile 尾部，绝不破坏稳定前缀 */</span></span></div>
+<div class="cl"><span class="ln">26</span><span class="code">  <span class="fn">trim</span>(<span class="pr">layers</span>: <span class="ty">PromptLayers</span>, <span class="pr">budget</span>: <span class="ty">number</span>) {</span></div>
+<div class="cl"><span class="ln">27</span><span class="code">    <span class="kw">while</span> (<span class="fn">tokens</span>(<span class="pr">layers</span>) &gt; <span class="pr">budget</span>) <span class="pr">layers</span>.<span class="pr">volatile</span>.<span class="fn">shift</span>(<span class="ghost">) // pop oldest turn first</span><span class="caret"></span></span></div>
+<div class="cl"><span class="ln">28</span><span class="code">  }</span></div>
+<div class="cl"><span class="ln">29</span><span class="code">}</span></div>
+          </div>
+
+          <!-- bottom panel -->
+          <div class="panel">
+            <div class="panel-tabs">
+              <div class="ptab on" data-pt="agent">Agent 对话</div>
+              <div class="ptab" data-pt="term">终端</div>
+              <div class="ptab" data-pt="diff">变更 <span class="ct">3</span></div>
+              <div class="panel-foot">
+                <span style="font-family:var(--mono);font-size:10px;color:var(--faint)">本轮 · </span>
+                <span style="font-family:var(--mono);font-size:10px;color:var(--sonar)">缓存命中 89%</span>
+              </div>
+            </div>
+
+            <!-- AGENT VIEW -->
+            <div class="panel-body" id="view-agent">
+              <div class="msg user">
+                <div class="ic">求</div>
+                <div class="body">
+                  <div class="who"><b>你</b> · 09:42</div>
+                  <p>把 <code>CacheManager</code> 的命中率统计抽成独立模块，并加上"省下多少钱"的实时估算。</p>
+                </div>
+              </div>
+
+              <div class="msg bot">
+                <div class="ic">SC</div>
+                <div class="body">
+                  <div class="who">
+                    <b>SeekCode Agent</b>
+                    <span class="reason-tag fast">⚡ FAST · non-think</span>
+                    <span style="color:var(--faint)">结对模式</span>
+                  </div>
+                  <p>这是确定性重构，调度器选用 <code>fast</code> 档。先定位现有统计逻辑：</p>
+                  <div class="tool-call"><span class="tl">grep</span><span class="arg">"hitRate"</span><span class="res">✓ 4 处</span></div>
+                  <div class="tool-call"><span class="tl">read_file</span><span class="arg">model/cache.ts</span><span class="res">✓ 命中缓存</span></div>
+                  <p>抽出 <code>CacheMetrics</code> 到新文件，并接入成本仪表盘：</p>
+                  <div class="tool-call run"><span class="tl">edit_file</span><span class="arg">model/metrics.ts +38</span><span class="res" style="color:var(--amber)">待审查</span></div>
+                  <p id="stream"><span class="typing"><i></i><i></i><i></i></span></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- TERMINAL VIEW -->
+            <div class="panel-body term" id="view-term">
+              <div><span class="pmt">seek <span class="p2">~/seek_code</span> ❯</span> npm run dev</div>
+              <div class="out">   <span class="ok">electron</span> main process ready · Node v20.18</div>
+              <div class="out">   <span class="ok">vite</span> renderer ready in 412ms</div>
+              <div class="out">[gateway] DeepSeek-V4 · key <span class="ok">✓</span> · baseURL=api.deepseek.com</div>
+              <div class="out">[net]     egress allowlist <span class="warn">ON</span> — 仅放行 api.deepseek.com</div>
+              <div class="out">[cache]   warm start — restored 847K tokens prefix (<span class="ok">hit</span>)</div>
+              <div class="out">[index]   tree-sitter parsed 1,284 files in 612ms (worker)</div>
+              <div><span class="pmt">seek <span class="p2">~/seek_code</span> ❯</span> <span class="caret"></span></div>
+            </div>
+
+            <!-- DIFF VIEW -->
+            <div class="panel-body" id="view-diff" style="display:none">
+              <div style="font-family:var(--mono);font-size:12px;color:var(--dim)">
+                <div style="color:var(--good)">+ model/metrics.ts &nbsp;<span style="color:var(--faint)">新文件 · 38 行</span></div>
+                <div style="color:var(--amber)">~ model/gateway.ts &nbsp;<span style="color:var(--faint)">+6 −2</span></div>
+                <div style="color:var(--amber)">~ ui/cost-panel.tsx &nbsp;<span style="color:var(--faint)">+11 −0</span></div>
+              </div>
+              <div style="margin-top:14px;display:flex;gap:8px">
+                <button class="send" style="width:auto;padding:0 16px;border-radius:8px;font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.05em;height:34px">全部接受</button>
+                <button style="background:var(--deep);border:1px solid var(--line-2);color:var(--dim);padding:0 16px;border-radius:8px;font-family:var(--disp);font-size:12px;height:34px;cursor:pointer">逐块审查</button>
+              </div>
+            </div>
+
+            <div class="composer">
+              <div class="inp">
+                <span class="slash">/</span>
+                <span>输入指令，或用 <span class="slash">/plan</span> · <span class="slash">/think</span> · <span class="slash">/bg</span> 转本地后台任务…</span>
+              </div>
+              <button class="send"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- ══════════ RIGHT RAIL ══════════ -->
+      <aside class="rail">
+
+        <!-- Reasoning scheduler -->
+        <div class="card reveal" style="animation-delay:.24s">
+          <div class="card-h">
+            <h4><span class="ic">◇</span> 混合推理调度</h4>
+            <span class="live">AUTO</span>
+          </div>
+          <div class="seg" id="seg">
+            <div class="knob" id="knob"></div>
+            <button class="on" data-r="0">FAST</button>
+            <button data-r="1">BALANCED</button>
+            <button data-r="2">DEEP</button>
+          </div>
+          <div class="dive">
+            <div class="lvl" style="top:6px">0 · 即时补全</div>
+            <div class="lvl" style="top:32px">推理链</div>
+            <div class="lvl" style="top:54px">深度求索 ⌄</div>
+            <div class="beam" id="beam" style="height:14px"></div>
+            <div class="sub" id="sub" style="top:8px"></div>
+          </div>
+          <div class="budget">
+            <span><b>推理预算</b></span>
+            <span>思考上限 <span class="v" id="budget">0</span> tokens</span>
+          </div>
+        </div>
+
+        <!-- Context depth gauge -->
+        <div class="card reveal" style="animation-delay:.3s">
+          <div class="card-h">
+            <h4><span class="ic">≋</span> 上下文深度</h4>
+            <span class="live">DSA 稀疏</span>
+          </div>
+          <div class="gauge">
+            <div class="num"><span id="ctxNum">0</span><span class="u">K</span></div>
+            <div class="meta">窗口上限<b>1.0M</b>token</div>
+          </div>
+          <div class="bar">
+            <div class="tick" style="left:20%"></div>
+            <div class="tick" style="left:50%"></div>
+            <div class="tick" style="left:80%"></div>
+            <div class="fill" id="ctxFill"></div>
+          </div>
+          <div class="gauge-legend"><span>0</span><span>200K</span><span>500K</span><span>800K</span><span>1M</span></div>
+          <div class="strat">
+            <div class="s on">全库直喂</div>
+            <div class="s">+边缘 RAG</div>
+            <div class="s">分层摘要</div>
+          </div>
+        </div>
+
+        <!-- TREASURE: cost & cache -->
+        <div class="card treasure reveal" style="animation-delay:.36s">
+          <div class="card-h">
+            <h4><span class="ic">◆</span> 成本与缓存</h4>
+            <span class="live">实时</span>
+          </div>
+          <div class="cost-grid">
+            <div class="stat">
+              <div class="lab">缓存命中率</div>
+              <div class="big c"><span id="hit">0</span>%</div>
+              <div class="sub">前缀复用 847K</div>
+            </div>
+            <div class="stat">
+              <div class="lab">本会话费用</div>
+              <div class="big a">¥<span id="cost">0.00</span></div>
+              <div class="sub">128K tok in / 9K out</div>
+            </div>
+          </div>
+          <div class="saved">
+            <div class="t">相比无缓存已省下 <b>¥<span id="saved">0.00</span></b></div>
+            <span class="pct" id="savedPct">−0%</span>
+          </div>
+        </div>
+
+        <!-- parallel subagents -->
+        <div class="card reveal" style="animation-delay:.42s">
+          <div class="card-h">
+            <h4><span class="ic">⧉</span> 本地后台任务</h4>
+            <span class="live">3 并行</span>
+          </div>
+          <div class="task local done">
+            <div class="th"><span class="loc local">本地</span><span class="tn">抽取 CacheMetrics 模块</span></div>
+            <div class="pbar"><i style="width:100%"></i></div>
+            <div class="tf"><span class="st">✓ 已完成 · 待审查</span><span>fast · ¥0.004</span></div>
+          </div>
+          <div class="task cloud">
+            <div class="th"><span class="loc cloud">沙箱</span><span class="tn">迁移测试到 vitest</span></div>
+            <div class="pbar"><i style="width:64%"></i></div>
+            <div class="tf"><span class="st">受限子进程执行中…</span><span>deep · ¥0.07</span></div>
+          </div>
+          <div class="task cloud">
+            <div class="th"><span class="loc cloud">沙箱</span><span class="tn">批量修复 12 个 lint 告警</span></div>
+            <div class="pbar"><i style="width:38%"></i></div>
+            <div class="tf"><span class="st">建 fix/lint 分支 → diff…</span><span>fast · ¥0.02</span></div>
+          </div>
+        </div>
+
+        <!-- plan -->
+        <div class="card reveal" style="animation-delay:.48s">
+          <div class="card-h">
+            <h4><span class="ic">⌖</span> 当前计划</h4>
+            <span style="font-family:var(--mono);font-size:9px;color:var(--faint)">PLAN 模式</span>
+          </div>
+          <div class="plan">
+            <div class="step done"><div class="mk">✓</div><div><div class="tx">定位命中率统计逻辑</div><div class="ms">grep · read · 命中缓存</div></div></div>
+            <div class="step done"><div class="mk">✓</div><div><div class="tx">抽出 CacheMetrics 模块</div><div class="ms">model/metrics.ts</div></div></div>
+            <div class="step now"><div class="mk">3</div><div><div class="tx">接入成本仪表盘 UI</div><div class="ms">ui/cost-panel.tsx · 进行中</div></div></div>
+            <div class="step"><div class="mk">4</div><div><div class="tx">补单元测试并自检</div><div class="ms">等待批准</div></div></div>
+          </div>
+        </div>
+
+      </aside>
+    </div>
+
+    <!-- ══════════ STATUS BAR ══════════ -->
+    <footer class="statusbar">
+      <div class="st-item eng"><span class="d"></span>结对模式 · <b>就绪</b></div>
+      <div class="st-item"><span class="d" style="background:var(--sonar);box-shadow:0 0 8px var(--sonar)"></span>纯本地 · <span class="cy">仅推理联网</span></div>
+      <div class="st-item">⎇ feat/cache-layer</div>
+      <div class="st-item">ctx <b id="sbCtx">847K</b>/1M</div>
+      <div class="st-item">缓存 <span class="cy" id="sbHit">89%</span></div>
+      <div class="st-item">本月 <span class="sv">¥18.40</span> <span style="color:var(--faint)">· 省 ¥162</span></div>
+      <div class="st-item grow"></div>
+      <div class="st-item">DeepSeek-V4 · reasoner · <span class="cy">key ✓</span></div>
+      <div class="st-item right"><svg viewBox="0 0 24 24" fill="none" stroke="var(--sonar)" stroke-width="2"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/></svg> 深度求索 ON</div>
+    </footer>
+  </div>
+
+<script>
+  /* ─── animated counters ─── */
+  function animate(el, to, dur, fmt){
+    const start=performance.now(), from=0;
+    function f(t){
+      let p=Math.min((t-start)/dur,1);
+      p=1-Math.pow(1-p,3); // ease-out cubic
+      const v=from+(to-from)*p;
+      el.textContent=fmt?fmt(v):Math.round(v);
+      if(p<1)requestAnimationFrame(f);
+    }
+    requestAnimationFrame(f);
+  }
+  window.addEventListener('load',()=>{
+    setTimeout(()=>{
+      animate(document.getElementById('hit'),89,1400);
+      animate(document.getElementById('ctxNum'),847,1500);
+      animate(document.getElementById('cost'),0.21,1400,v=>v.toFixed(2));
+      animate(document.getElementById('saved'),1.84,1600,v=>v.toFixed(2));
+      animate(document.getElementById('savedPct'),90,1400,v=>'−'+Math.round(v)+'%');
+      document.getElementById('ctxFill').style.width='84.7%';
+    },350);
+  });
+
+  /* ─── engine toggle ─── */
+  const engine=document.getElementById('engine'), pill=document.getElementById('pill');
+  function setPill(btn){pill.style.width=btn.offsetWidth+'px';pill.style.transform='translateX('+(btn.offsetLeft-3)+'px)';}
+  const ebtns=engine.querySelectorAll('button');
+  setPill(ebtns[0]);
+  ebtns.forEach(b=>b.addEventListener('click',()=>{
+    ebtns.forEach(x=>x.classList.remove('on'));b.classList.add('on');setPill(b);
+  }));
+
+  /* ─── reasoning scheduler ─── */
+  const seg=document.getElementById('seg'),knob=document.getElementById('knob');
+  const sub=document.getElementById('sub'),beam=document.getElementById('beam'),budget=document.getElementById('budget');
+  const rbtns=seg.querySelectorAll('button');
+  const depths=[8,32,52], beams=[14,38,58], budgets=[0,2048,16384];
+  function setReason(i){
+    const b=rbtns[i];
+    knob.style.width=b.offsetWidth+'px';
+    knob.style.transform='translateX('+(b.offsetLeft-3)+'px)';
+    seg.classList.toggle('deep',i===2);
+    sub.style.top=depths[i]+'px';
+    beam.style.height=beams[i]+'px';
+    animate(budget,budgets[i],600);
+  }
+  rbtns.forEach((b,i)=>b.addEventListener('click',()=>{
+    rbtns.forEach(x=>x.classList.remove('on'));b.classList.add('on');setReason(i);
+  }));
+  setTimeout(()=>setReason(0),400);
+
+  /* ─── panel tabs ─── */
+  const ptabs=document.querySelectorAll('.ptab');
+  const views={agent:'view-agent',term:'view-term',diff:'view-diff'};
+  ptabs.forEach(t=>t.addEventListener('click',()=>{
+    ptabs.forEach(x=>x.classList.remove('on'));t.classList.add('on');
+    const k=t.dataset.pt;
+    Object.entries(views).forEach(([key,id])=>{
+      const el=document.getElementById(id);
+      if(key==='term'){el.style.display=key===k?'block':'none';}
+      else{el.style.display=key===k?'block':'none';}
+    });
+  }));
+
+  /* ─── editor tabs ─── */
+  document.querySelectorAll('.ed-tab').forEach(t=>t.addEventListener('click',e=>{
+    if(e.target.classList.contains('x'))return;
+    document.querySelectorAll('.ed-tab').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+  }));
+
+  /* ─── simulated streaming reply ─── */
+  const stream=document.getElementById('stream');
+  const reply="完成 ✦ 新增 CacheMetrics，命中率与省钱估算已接入右侧仪表盘。下一步接入 UI 后跑测试，是否继续？";
+  setTimeout(()=>{
+    stream.innerHTML='';let i=0;
+    (function type(){
+      if(i<=reply.length){stream.innerHTML=reply.slice(0,i)+'<span class="caret"></span>';i++;setTimeout(type,22);}
+      else{stream.innerHTML=reply;}
+    })();
+  },2600);
+
+  /* ─── file tree active ─── */
+  document.querySelectorAll('.tree .row').forEach(r=>r.addEventListener('click',()=>{
+    if(r.querySelector('.dir'))return;
+    document.querySelectorAll('.tree .row').forEach(x=>x.classList.remove('active'));
+    r.classList.add('active');
+  }));
+</script>
+</body>
+</html>
