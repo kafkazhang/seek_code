@@ -1086,10 +1086,10 @@ button {
   border-color: var(--sonar-deep);
 }
 
-/* 任务委派输入区：复用对话 .composer 样式，仅做面板内尺寸/边框微调 */
+/* 任务委派输入区：复用对话 .composer 样式，固定在面板底部 */
 .task-composer {
-  border-top: 0;
-  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+  border-top: 1px solid var(--line);
   padding: 10px 12px 12px;
   background: rgba(var(--ink-rgb), 0.4);
 }

@@ -7,6 +7,9 @@
 仅在你主动安装扩展（Skills / MCP）时，才会访问少数公共只读源（GitHub / MCP 注册中心等），且不上传任何代码。
 
 
+![img.png](img.png)
+
+
 ## 特性（当前 MVP）
 
 - 🧠 **结对 Agent**：流式对话 + 工具循环（`read_file` / `list_dir` / `grep` / `write_file` / `edit_file` / `run_command`）
@@ -69,3 +72,4 @@ src/
 > 思考深度通过请求体 `thinking` 参数控制：`{ "type": "enabled"|"disabled", "reasoning_effort": "high"|"max" }`。
 > V4 起 thinking 与 tools/temperature 解耦——三档推理均可带工具；`frequency_penalty`/`presence_penalty` 已弃用。
 > 旧名 `deepseek-chat`/`deepseek-reasoner` 将于 2026-07-24 弃用。
+

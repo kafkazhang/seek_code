@@ -70,7 +70,7 @@ export interface RichInputProps {
   onStop?: () => void
   /** 提交回调：返回当前文本与附件，由调用方决定「发送」或「委派」 */
   onSubmit: (text: string, atts: Attachment[]) => void | Promise<void>
-  /** 是否启用 /命令+技能 补全（任务委派关闭，因其为一次性目标） */
+  /** 是否启用 /命令+技能 补全 */
   enableSlash?: boolean
   /** 发送按钮文案；提供时渲染文字胶囊按钮，否则渲染箭头图标 */
   sendLabel?: string

@@ -86,7 +86,10 @@ export default function App(): JSX.Element {
       if (e.shiftKey && mod && (e.key === 'M' || e.key === 'm')) {
         e.preventDefault()
         const st = useStore.getState()
-        st.setMode(nextMode(st.permissionMode)) // 循环权限模式
+        const cur = st.active()
+        if (!cur) return
+        const mode = cur.permissionMode ?? st.config?.permissionMode ?? 'ask'
+        st.setMode(nextMode(mode)) // 循环当前会话权限模式
       } else if (mod && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
         e.preventDefault()
         useStore.getState().setPalette('files') // 快速打开
@@ -294,7 +297,7 @@ function ConvHeader(): JSX.Element | null {
   const dockTab = useStore((st) => st.dockTab)
   const setDock = useStore((st) => st.setDock)
   if (!cur) return null
-  const toggle = (tab: 'files' | 'terminal'): void =>
+  const toggle = (tab: 'files' | 'terminal' | 'tasks'): void =>
     dockOpen && dockTab === tab ? setDock(false) : setDock(true, tab)
   const activeTool = (tab: string): boolean => dockOpen && dockTab === tab
   return (
@@ -315,6 +318,14 @@ function ConvHeader(): JSX.Element | null {
                 <path d="M7 9l3 3-3 3M13 15h4" />
               </svg>
               终端
+            </button>
+            <button className={'ctool' + (activeTool('tasks') ? ' on' : '')} onClick={() => toggle('tasks')} title="后台任务 / 委派">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <path d="M9 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                <rect x="9" y="3" width="6" height="4" rx="1" />
+                <path d="M9 12h6M9 16h4" />
+              </svg>
+              任务
             </button>
           </div>
           <div className={'conv-proj' + (cur.started ? ' locked' : '')}>
@@ -651,7 +662,9 @@ function toolPath(args: string): string | null {
 
 // ── Composer：项目选择（开始后锁定）+ 推理档位 + 输入 ──────
 function ModeMenu(): JSX.Element {
-  const permissionMode = useStore((st) => st.permissionMode)
+  const cur = useStore((st) => st.active())
+  const config = useStore((st) => st.config)
+  const permissionMode = cur?.permissionMode ?? config?.permissionMode ?? 'ask'
   const setMode = useStore((st) => st.setMode)
   const [open, setOpen] = useState(false)
   return (

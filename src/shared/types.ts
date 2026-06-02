@@ -174,6 +174,8 @@ export interface Session {
   updatedAt: number
   messages: ChatMessage[]
   totals: { cost: number; saved: number; hitRate: number }
+  /** 本会话权限模式；新建时继承配置中的默认值 */
+  permissionMode: PermissionMode
 }
 
 /** 恢复会话时回灌给模型的精简历史（文本，不含工具结构） */

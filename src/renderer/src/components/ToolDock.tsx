@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { marked } from 'marked'
-import { useStore } from '../store'
+import { useStore, type Attachment } from '../store'
 import { FileNode, ReasoningMode, TerminalEvent } from '@shared/types'
 import FileTree from './FileTree'
 import MarkdownView from './MarkdownView'
@@ -282,14 +282,60 @@ const TASK_DEPTH: Record<ReasoningMode, string> = { fast: 'FAST', balanced: 'BAL
 function TasksPanel(): JSX.Element {
   const tasks = useStore((s) => s.tasks)
   const startBgTask = useStore((s) => s.startBgTask)
+  const command = useStore((s) => s.command)
   const cur = useStore((s) => s.active())
   const hasProject = !!cur?.projectRoot
   const root = cur?.projectRoot ?? null
   // 任务自带推理档位（与对话区相互独立：后台任务一次性运行，需单独定深浅）
   const [depth, setDepth] = useState<ReasoningMode>('balanced')
+
+  async function submitTask(text: string, atts: Attachment[]): Promise<void> {
+    const t = text.trim()
+    if (!t && atts.length === 0) return
+    // 纯 /命令 走会话命令；档位类命令优先作用于本面板推理档位
+    if (t.startsWith('/')) {
+      const cmd = t.slice(1).trim().split(/\s+/)[0]?.toLowerCase()
+      if (cmd === 'fast' || cmd === 'balanced' || cmd === 'deep') {
+        setDepth(cmd as ReasoningMode)
+        return
+      }
+      await command(t)
+      return
+    }
+    await startBgTask(t, atts, depth)
+  }
+
   return (
     <div className="tasks-panel">
-      {/* 与对话输入区一致的富文本输入；差异仅在「任务特性」：固定全自动权限、自带档位、动作为委派 */}
+      <div className="task-list scroll">
+        {tasks.length === 0 ? (
+          <div className="dock-empty">
+            暂无后台任务。
+            <br />
+            用下方输入或 <code>/bg &lt;任务&gt;</code> 委派。
+          </div>
+        ) : (
+          tasks.map((t) => (
+            <div key={t.id} className={'task-card ' + t.status}>
+              <div className="tc-h">
+                <span className={'tc-dot ' + t.status} />
+                <span className="tc-goal">{t.goal}</span>
+                {(t.status === 'running' || t.status === 'queued') && (
+                  <button className="tc-cancel" onClick={() => void window.seek.cancelTask(t.id)}>
+                    取消
+                  </button>
+                )}
+              </div>
+              <div className="tc-meta">
+                {t.projectName || ''} · {statusText(t.status)} · {t.toolCount} 次工具
+              </div>
+              <div className="tc-action">{t.lastAction}</div>
+              {t.result && <div className="tc-result">{t.result.slice(-280)}</div>}
+            </div>
+          ))
+        )}
+      </div>
+      {/* 与对话 Composer 一致：任务列表在上、输入区固定在面板底部 */}
       <div className="composer task-composer">
         <div className="seg-row">
           <span className={'proj-chip mini' + (hasProject ? '' : ' need')} title="后台任务运行于当前会话的项目目录">
@@ -312,42 +358,15 @@ function TasksPanel(): JSX.Element {
         </div>
         <RichInput
           root={root}
-          enableSlash={false}
           sendLabel="委派"
           sendTitle="委派后台任务 · 回车"
           placeholder={
-            hasProject ? '委派一个后台任务并行执行 · @ 文件 · 可粘贴/拖入图片…' : '先为会话选择项目目录'
+            hasProject
+              ? '委派一个后台任务并行执行 · / 命令 · @ 文件 · 可粘贴/拖入图片…'
+              : '先为会话选择项目目录'
           }
-          onSubmit={(t, a) => void startBgTask(t, a, depth)}
+          onSubmit={(t, a) => void submitTask(t, a)}
         />
-      </div>
-      <div className="task-list scroll">
-        {tasks.length === 0 ? (
-          <div className="dock-empty">
-            暂无后台任务。
-            <br />
-            用上方输入或 <code>/bg &lt;任务&gt;</code> 委派。
-          </div>
-        ) : (
-          tasks.map((t) => (
-            <div key={t.id} className={'task-card ' + t.status}>
-              <div className="tc-h">
-                <span className={'tc-dot ' + t.status} />
-                <span className="tc-goal">{t.goal}</span>
-                {(t.status === 'running' || t.status === 'queued') && (
-                  <button className="tc-cancel" onClick={() => void window.seek.cancelTask(t.id)}>
-                    取消
-                  </button>
-                )}
-              </div>
-              <div className="tc-meta">
-                {t.projectName || ''} · {statusText(t.status)} · {t.toolCount} 次工具
-              </div>
-              <div className="tc-action">{t.lastAction}</div>
-              {t.result && <div className="tc-result">{t.result.slice(-280)}</div>}
-            </div>
-          ))
-        )}
       </div>
     </div>
   )

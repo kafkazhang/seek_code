@@ -225,15 +225,15 @@ function TabModel(): JSX.Element {
 
 // ── 权限模式 ─────────────────────────────────────────
 function TabPermission(): JSX.Element {
-  const permissionMode = useStore((s) => s.permissionMode)
-  const setMode = useStore((s) => s.setMode)
+  const permissionMode = useStore((s) => s.config?.permissionMode ?? 'ask')
+  const setDefaultMode = useStore((s) => s.setDefaultMode)
   return (
     <div className="tab-pane">
       <div className="tab-h">权限模式</div>
-      <div className="tab-sub">控制 Agent 写文件 / 执行命令的放行策略。可在对话框旁随时切换（Shift+Ctrl+M）。</div>
+      <div className="tab-sub">新建会话时的默认权限模式。每个会话可在对话框旁单独切换（Shift+Ctrl+M），互不影响。</div>
       <div className="mode-list">
         {MODES.map((m) => (
-          <button key={m.id} className={'mode-opt' + (permissionMode === m.id ? ' on' : '')} onClick={() => setMode(m.id)}>
+          <button key={m.id} className={'mode-opt' + (permissionMode === m.id ? ' on' : '')} onClick={() => setDefaultMode(m.id)}>
             <span className="mo-check">{permissionMode === m.id ? '✓' : ''}</span>
             <span className="mo-text">
               <b>{m.label}</b>

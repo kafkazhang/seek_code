@@ -81,7 +81,6 @@ interface State {
   running: Record<string, boolean>
   approvals: Approval[]
   reasoning: ReasoningMode
-  permissionMode: PermissionMode
   status: string
   settingsOpen: boolean
   dockOpen: boolean
@@ -109,6 +108,7 @@ interface State {
   bumpSkills: () => void
   setReasoning: (m: ReasoningMode) => void
   setMode: (m: PermissionMode) => void
+  setDefaultMode: (m: PermissionMode) => void
   setTheme: (t: ThemeId) => void
   command: (text: string) => Promise<void>
   retryMessage: (assistantId: string) => Promise<void>
@@ -127,7 +127,7 @@ interface State {
 let cleanup: (() => void) | null = null
 let cleanupTask: (() => void) | null = null
 
-function blankSession(): Session {
+function blankSession(defaultMode: PermissionMode): Session {
   const now = Date.now()
   return {
     id: uid(),
@@ -138,8 +138,13 @@ function blankSession(): Session {
     createdAt: now,
     updatedAt: now,
     messages: [],
-    totals: { cost: 0, saved: 0, hitRate: 0 }
+    totals: { cost: 0, saved: 0, hitRate: 0 },
+    permissionMode: defaultMode
   }
+}
+
+function sessionMode(session: Session | null, config: AppConfig | null): PermissionMode {
+  return session?.permissionMode ?? config?.permissionMode ?? 'ask'
 }
 
 export const useStore = create<State>((set, get) => {
@@ -176,7 +181,6 @@ export const useStore = create<State>((set, get) => {
     running: {},
     approvals: [],
     reasoning: 'balanced',
-    permissionMode: 'ask',
     status: '',
     settingsOpen: false,
     dockOpen: false,
@@ -231,14 +235,16 @@ export const useStore = create<State>((set, get) => {
       const config = await window.seek.getConfig()
       applyTheme(config.theme) // 尽早应用主题，避免闪烁
       const persisted = await window.seek.loadSessions()
-      const sessions = [...persisted.sessions].sort((a, b) => b.updatedAt - a.updatedAt)
+      const defaultMode = config.permissionMode
+      const sessions = [...persisted.sessions]
+        .map((s) => ({ ...s, permissionMode: s.permissionMode ?? defaultMode }))
+        .sort((a, b) => b.updatedAt - a.updatedAt)
       const activeId = sessions.find((s) => s.id === persisted.activeId)?.id ?? sessions[0]?.id ?? null
       set({
         config,
         sessions,
         activeId,
         reasoning: config.reasoning,
-        permissionMode: config.permissionMode,
         settingsOpen: !config.hasKey
       })
       if (sessions.length === 0) get().newSession()
@@ -273,7 +279,7 @@ export const useStore = create<State>((set, get) => {
     },
 
     newSession: () => {
-      const s = blankSession()
+      const s = blankSession(get().config?.permissionMode ?? 'ask')
       set((st) => ({ sessions: [s, ...st.sessions], activeId: s.id, status: '' }))
       persist()
     },
@@ -310,8 +316,14 @@ export const useStore = create<State>((set, get) => {
       void window.seek.setConfig({ reasoning: m }) // 持久化推理档位偏好
     },
     setMode: (m) => {
-      set({ permissionMode: m })
-      void window.seek.setConfig({ permissionMode: m }) // 持久化权限模式
+      const cur = get().active()
+      if (!cur) return
+      patch(cur.id, (s) => ({ ...s, permissionMode: m, updatedAt: Date.now() }))
+      persist()
+    },
+    setDefaultMode: (m) => {
+      set((st) => ({ config: st.config ? { ...st.config, permissionMode: m } : st.config }))
+      void window.seek.setConfig({ permissionMode: m })
     },
     setTheme: (t) => {
       applyTheme(t) // 立即生效
@@ -339,7 +351,7 @@ export const useStore = create<State>((set, get) => {
     saveConfig: async (patchCfg) => {
       const config = await window.seek.setConfig(patchCfg)
       applyTheme(config.theme)
-      set({ config, reasoning: config.reasoning, permissionMode: config.permissionMode })
+      set({ config, reasoning: config.reasoning })
       void get().loadBalance() // Key / baseURL 变更后刷新余额
     },
 
@@ -399,7 +411,7 @@ export const useStore = create<State>((set, get) => {
       await window.seek.send({
         sessionId: cur.id,
         text: (t || '（见附件图片）') + ctx,
-        options: { reasoning: get().reasoning, permissionMode: get().permissionMode },
+        options: { reasoning: get().reasoning, permissionMode: sessionMode(cur, get().config) },
         projectRoot: root,
         priorMessages: prior,
         images
@@ -443,7 +455,7 @@ export const useStore = create<State>((set, get) => {
       await window.seek.send({
         sessionId: cur.id,
         text: userText,
-        options: { reasoning: get().reasoning, permissionMode: get().permissionMode },
+        options: { reasoning: get().reasoning, permissionMode: sessionMode(cur, get().config) },
         projectRoot: cur.projectRoot,
         priorMessages: prior
       })
