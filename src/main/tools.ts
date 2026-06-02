@@ -5,7 +5,7 @@ import { promisify } from 'node:util'
 import { EditPreview } from '@shared/types'
 import { listSkills, readSkill } from './skills'
 import { searchCode, updateFile } from './codeindex'
-import { isAppKiller, isDangerousCommand, isNetworkCommand } from './cmdsafety'
+import { isAppKiller, isDangerousCommand } from './cmdsafety'
 
 const execAsync = promisify(exec)
 
@@ -19,7 +19,7 @@ const MAX_GREP_MATCHES = 80
 export const WRITE_TOOLS = new Set(['write_file', 'edit_file', 'run_command'])
 
 // 命令安全分类已抽离至纯模块 cmdsafety.ts（便于单测），此处转出以兼容既有引用。
-export { isAppKiller, isDangerousCommand, isNetworkCommand }
+export { isAppKiller, isDangerousCommand }
 
 export interface ToolContext {
   root: string

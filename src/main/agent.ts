@@ -8,7 +8,7 @@ import {
   computeUsage,
   withRetry
 } from './gateway'
-import { toolDefs, execute, summarize, previewEdit, isDangerousCommand, isNetworkCommand, WRITE_TOOLS } from './tools'
+import { toolDefs, execute, summarize, previewEdit, isDangerousCommand, WRITE_TOOLS } from './tools'
 import { mcpToolDefs, isMcpTool, callMcpTool } from './mcp'
 import { AgentEvent, EditPreview, PermissionMode, PriorMessage, ProjectInfo, ReasoningMode, SendOptions } from '@shared/types'
 import { getConfig } from './config'
@@ -340,18 +340,11 @@ export async function runAgent(
         }
 
         // 危险命令（如 taskkill / rm -rf / shutdown）即使在全自动模式也强制审批
-        const cmd = args.command ?? ''
-        const dangerousCmd = t.name === 'run_command' && isDangerousCommand(cmd)
-        // 联网命令（curl/git push/ssh…）即使全自动也强制审批：子进程出网不受白名单约束，存在外传风险
-        const networkCmd = t.name === 'run_command' && !dangerousCmd && isNetworkCommand(cmd)
+        const dangerousCmd = t.name === 'run_command' && isDangerousCommand(args.command ?? '')
         // MCP 外部工具：在询问/接受编辑模式下需审批（可能有外部副作用）
         const mcpNeedsApproval = isMcpTool(t.name) && (perm === 'ask' || perm === 'acceptEdits')
-        if (needsApproval(perm, t.name) || dangerousCmd || networkCmd || mcpNeedsApproval) {
-          const sum = dangerousCmd
-            ? '⚠ 危险命令 · ' + summarize(t.name, args)
-            : networkCmd
-              ? '🌐 联网命令（出网不受白名单约束） · ' + summarize(t.name, args)
-              : summarize(t.name, args)
+        if (needsApproval(perm, t.name) || dangerousCmd || mcpNeedsApproval) {
+          const sum = dangerousCmd ? '⚠ 危险命令 · ' + summarize(t.name, args) : summarize(t.name, args)
           const ok = await approve(sessionId, t.name, sum, editPreview)
           if (!ok) {
             result = '用户拒绝了该操作。'
