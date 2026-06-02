@@ -1,0 +1,88 @@
+# 打 tag 推送或手动触发时，在 Windows / macOS Intel / macOS Apple Silicon 上并行打包，
+# 并将安装包上传到 GitHub Release。
+#
+# 用法：
+#   git tag v0.1.0 && git push origin v0.1.0
+# 或在 Actions 页点击 "Run workflow"。
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            args: --win
+          - os: macos-latest
+            platform: mac-x64
+            args: --mac --x64
+          - os: macos-latest
+            platform: mac-arm64
+            args: --mac --arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build & package
+        run: npm run build && npx electron-builder ${{ matrix.args }} --publish never
+        env:
+          # CI 无 Apple/Windows 签名证书时关闭自动发现，仍可产出未签名安装包
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.blockmap
+            dist/latest*.yml
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,7 @@
 appId: com.seekcode.app
 productName: SeekCode
+# CI 多平台产物命名：SeekCode-0.1.0-win-x64.exe / SeekCode-0.1.0-mac-arm64.dmg
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 directories:
   output: dist
   buildResources: build

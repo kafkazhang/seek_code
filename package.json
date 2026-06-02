@@ -22,6 +22,8 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "package:win": "electron-vite build && electron-builder --win",
     "package:mac": "electron-vite build && electron-builder --mac",
+    "package:mac-x64": "electron-vite build && electron-builder --mac --x64",
+    "package:mac-arm64": "electron-vite build && electron-builder --mac --arm64",
     "package:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {
