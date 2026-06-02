@@ -1,6 +1,8 @@
 # SeekCode
 
-> 纯本地 AI 编程桌面工具 · 由 DeepSeek 驱动 · 只需一个 API Key 即可使用
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> 纯本地 AI 编程桌面工具 · 由 DeepSeek 驱动 · 只需一个 API Key 即可使用 · [MIT 开源](LICENSE)
 
 融合 Claude Code（本地结对深度）与 Codex（任务委派）思路，基于 **Electron + Node + React/TypeScript**。
 代码、索引、配置全部留在本机。网络出口由白名单强制约束：**用户代码/上下文只发往 DeepSeek 推理接口**；
@@ -72,4 +74,12 @@ src/
 > 思考深度通过请求体 `thinking` 参数控制：`{ "type": "enabled"|"disabled", "reasoning_effort": "high"|"max" }`。
 > V4 起 thinking 与 tools/temperature 解耦——三档推理均可带工具；`frequency_penalty`/`presence_penalty` 已弃用。
 > 旧名 `deepseek-chat`/`deepseek-reasoner` 将于 2026-07-24 弃用。
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE) 开源。
+
+Copyright © 2026 SeekCode
+
+「SeekCode」名称与标识仅用于指代本项目，不等同于对商标或商业品牌的额外授权。
 

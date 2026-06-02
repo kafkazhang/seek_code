@@ -4,6 +4,14 @@
   "description": "纯本地 AI 编程桌面工具 · 由 DeepSeek 驱动 · 仅需一个 API Key",
   "author": "SeekCode",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kafkazhang/seek_code.git"
+  },
+  "homepage": "https://github.com/kafkazhang/seek_code#readme",
+  "bugs": {
+    "url": "https://github.com/kafkazhang/seek_code/issues"
+  },
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
