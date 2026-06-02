@@ -5,9 +5,10 @@ import {
   thinkingFor,
   systemPrompt,
   projectContextMessage,
-  computeUsage
+  computeUsage,
+  withRetry
 } from './gateway'
-import { toolDefs, execute, summarize, previewEdit, isDangerousCommand, WRITE_TOOLS } from './tools'
+import { toolDefs, execute, summarize, previewEdit, isDangerousCommand, isNetworkCommand, WRITE_TOOLS } from './tools'
 import { mcpToolDefs, isMcpTool, callMcpTool } from './mcp'
 import { AgentEvent, EditPreview, PermissionMode, PriorMessage, ProjectInfo, ReasoningMode, SendOptions } from '@shared/types'
 import { getConfig } from './config'
@@ -24,6 +25,25 @@ interface Session {
 
 const sessions = new Map<string, Session>()
 const MAX_STEPS = 25
+const MAX_SESSIONS = 50 // 内存中保留的最大会话数，超出按最久未用淘汰（避免长期运行内存只增不减）
+
+/** 取/建会话，并按 LRU 维护：命中即移到末尾；超额淘汰最久未用（含中断其残留请求） */
+function touchSession(sessionId: string): Session {
+  let s = sessions.get(sessionId)
+  if (s) {
+    sessions.delete(sessionId) // 重新插入 → 移到 Map 末尾，标记为最近使用
+  } else {
+    s = { history: [] }
+  }
+  sessions.set(sessionId, s)
+  while (sessions.size > MAX_SESSIONS) {
+    const oldest = sessions.keys().next().value as string | undefined
+    if (oldest === undefined || oldest === sessionId) break
+    sessions.get(oldest)?.abort?.abort()
+    sessions.delete(oldest)
+  }
+  return s
+}
 
 // ── 上下文压缩 ───────────────────────────────────────
 // 会话历史跨轮次无限增长会撑爆上下文窗口、推高成本。当历史体量超过阈值时，
@@ -41,14 +61,27 @@ function msgText(m: ChatMsg): string {
   return ''
 }
 
-function estTokens(messages: ChatMsg[]): number {
-  let chars = 0
-  for (const m of messages) {
-    chars += msgText(m).length
-    const tc = (m as any).tool_calls as Array<{ function?: { arguments?: string } }> | undefined
-    if (tc) for (const t of tc) chars += (t.function?.arguments ?? '').length
+// token 估算：CJK 字符的 token 密度远高于 ASCII（约 1.5 字符/token vs 4 字符/token），
+// 分别计权可显著降低中英混排时的估算偏差，使压缩触发时机更准。
+function estTokensOfText(text: string): number {
+  let cjk = 0
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i)
+    // CJK 统一表意文字 / 扩展 A / 兼容 / 假名 / 谚文等高密度区段
+    if ((c >= 0x3000 && c <= 0x9fff) || (c >= 0xac00 && c <= 0xd7a3) || (c >= 0xf900 && c <= 0xfaff)) cjk++
   }
-  return Math.round(chars / 3.5)
+  const ascii = text.length - cjk
+  return Math.round(ascii / 4 + cjk / 1.5)
+}
+
+function estTokens(messages: ChatMsg[]): number {
+  let total = 0
+  for (const m of messages) {
+    total += estTokensOfText(msgText(m))
+    const tc = (m as any).tool_calls as Array<{ function?: { arguments?: string } }> | undefined
+    if (tc) for (const t of tc) total += estTokensOfText(t.function?.arguments ?? '')
+  }
+  return total
 }
 
 /** 找到一个安全的裁剪下标：从后往前累计至 keep 预算，落在最近的 user 消息边界。 */
@@ -147,11 +180,7 @@ export async function runAgent(
   const planTail: ChatMsg | null =
     perm === 'plan' ? { role: 'system', content: PLAN_DIRECTIVE } : null
 
-  let s = sessions.get(sessionId)
-  if (!s) {
-    s = { history: [] }
-    sessions.set(sessionId, s)
-  }
+  const s = touchSession(sessionId)
   const abort = new AbortController()
   s.abort = abort
 
@@ -204,8 +233,9 @@ export async function runAgent(
   }
   emit({ type: 'status', sessionId, text: mode === 'deep' ? '深度推理中…' : '思考中…', mode })
 
+  // 流式请求：对瞬时错误（429 / 5xx / 网络抖动）指数退避重试，用户中断不重试
   const createStream = (request: any): Promise<unknown> =>
-    client.chat.completions.create(request, { signal: abort.signal })
+    withRetry(() => client.chat.completions.create(request, { signal: abort.signal }) as Promise<unknown>)
 
   let autoContinues = 0
   try {
@@ -310,11 +340,18 @@ export async function runAgent(
         }
 
         // 危险命令（如 taskkill / rm -rf / shutdown）即使在全自动模式也强制审批
-        const dangerousCmd = t.name === 'run_command' && isDangerousCommand(args.command ?? '')
+        const cmd = args.command ?? ''
+        const dangerousCmd = t.name === 'run_command' && isDangerousCommand(cmd)
+        // 联网命令（curl/git push/ssh…）即使全自动也强制审批：子进程出网不受白名单约束，存在外传风险
+        const networkCmd = t.name === 'run_command' && !dangerousCmd && isNetworkCommand(cmd)
         // MCP 外部工具：在询问/接受编辑模式下需审批（可能有外部副作用）
         const mcpNeedsApproval = isMcpTool(t.name) && (perm === 'ask' || perm === 'acceptEdits')
-        if (needsApproval(perm, t.name) || dangerousCmd || mcpNeedsApproval) {
-          const sum = dangerousCmd ? '⚠ 危险命令 · ' + summarize(t.name, args) : summarize(t.name, args)
+        if (needsApproval(perm, t.name) || dangerousCmd || networkCmd || mcpNeedsApproval) {
+          const sum = dangerousCmd
+            ? '⚠ 危险命令 · ' + summarize(t.name, args)
+            : networkCmd
+              ? '🌐 联网命令（出网不受白名单约束） · ' + summarize(t.name, args)
+              : summarize(t.name, args)
           const ok = await approve(sessionId, t.name, sum, editPreview)
           if (!ok) {
             result = '用户拒绝了该操作。'
@@ -335,7 +372,7 @@ export async function runAgent(
             name: t.name,
             args: t.args || '{}',
             status: 'done',
-            result: clip(result),
+            result: clip(result, clipLimitFor(t.name)),
             preview: editPreview
           })
         } catch (e: any) {
@@ -354,6 +391,13 @@ export async function runAgent(
 
 function clip(s: string, n = 800): string {
   return s.length > n ? s.slice(0, n) + '…' : s
+}
+
+// UI 展示用的工具结果截断上限（不影响回灌给模型的完整结果）。
+// 读类工具放宽，便于用户在面板里看清检索/读取到的内容。
+const READ_TOOLS = new Set(['read_file', 'search_code', 'grep', 'list_dir', 'read_skill'])
+function clipLimitFor(name: string): number {
+  return READ_TOOLS.has(name) ? 2400 : 800
 }
 
 // ── 识图：本地 OCR 文本拼装 ───────────────────────────────────────

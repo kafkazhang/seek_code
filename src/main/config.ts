@@ -17,7 +17,7 @@ function atomicWrite(p: string, content: string | Buffer): void {
 //  - apikey.bin 存经 safeStorage（操作系统级）加密的 API Key
 // 全部位于 userData 目录，纯本地，卸载即清除。
 
-interface PersistShape extends Omit<AppConfig, 'hasKey'> {}
+type PersistShape = Omit<AppConfig, 'hasKey'>
 
 let cache: AppConfig | null = null
 

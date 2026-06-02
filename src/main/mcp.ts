@@ -122,10 +122,12 @@ async function httpSend(c: McpConn, method: string, params: unknown, expectReply
     ...(c.headers ?? {}),
     ...(c.sessionId ? { 'Mcp-Session-Id': c.sessionId } : {})
   }
+  // 远端无响应时避免无限挂起（stdio 侧已有 15s 超时，此处对齐）
   const res = await guardedFetch(c.url!, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ jsonrpc: '2.0', ...(expectReply ? { id } : {}), method, params })
+    body: JSON.stringify({ jsonrpc: '2.0', ...(expectReply ? { id } : {}), method, params }),
+    signal: AbortSignal.timeout(20000)
   })
   const sid = res.headers.get('mcp-session-id')
   if (sid) c.sessionId = sid

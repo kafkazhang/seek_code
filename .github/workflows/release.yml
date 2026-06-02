@@ -31,6 +31,9 @@ jobs:
           - os: macos-latest
             platform: mac-arm64
             args: --mac --arm64
+          - os: ubuntu-latest
+            platform: linux
+            args: --linux
 
     runs-on: ${{ matrix.os }}
 
@@ -42,9 +45,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Typecheck
         run: npm run typecheck
@@ -63,6 +67,7 @@ jobs:
             dist/*.exe
             dist/*.dmg
             dist/*.zip
+            dist/*.AppImage
             dist/*.blockmap
             dist/latest*.yml
           if-no-files-found: error

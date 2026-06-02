@@ -34,6 +34,9 @@ export function getClient(): OpenAI {
   return new OpenAI({ apiKey: key, baseURL: cfg.baseURL })
 }
 
+// 重试/退避逻辑抽离至纯模块 retry.ts（便于单测），此处转出以兼容引用。
+export { isRetryableError, withRetry } from './retry'
+
 /** 推理档位 → 模型：fast→flash；balanced/deep→pro */
 export function modelFor(mode: ReasoningMode): string {
   const cfg = getConfig()

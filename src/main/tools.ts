@@ -5,6 +5,7 @@ import { promisify } from 'node:util'
 import { EditPreview } from '@shared/types'
 import { listSkills, readSkill } from './skills'
 import { searchCode, updateFile } from './codeindex'
+import { isAppKiller, isDangerousCommand, isNetworkCommand } from './cmdsafety'
 
 const execAsync = promisify(exec)
 
@@ -17,34 +18,8 @@ const MAX_GREP_MATCHES = 80
 
 export const WRITE_TOOLS = new Set(['write_file', 'edit_file', 'run_command'])
 
-// 会杀死应用自身的命令（按映像名/进程名批量杀 node/electron）——一律硬拒绝
-const APP_KILLER_RE = [
-  /taskkill\b[^|&;]*\/im\s+["']?node(\.exe)?["']?/i,
-  /taskkill\b[^|&;]*\/im\s+["']?electron(\.exe)?["']?/i,
-  /taskkill\b[^|&;]*\/im\s+["']?seekcode/i,
-  /\b(killall|pkill)\b[^|&;\n]*\b(node|electron|seekcode)\b/i
-]
-export function isAppKiller(cmd: string): boolean {
-  return APP_KILLER_RE.some((re) => re.test(cmd))
-}
-
-// 危险命令（可能造成不可逆破坏）——即使全自动也强制弹审批
-const DANGEROUS_RE = [
-  /\brm\s+-[a-z]*[rf]/i,
-  /\bdel\s+\/[a-z]/i,
-  /\brmdir\s+\/s/i,
-  /\bformat\b/i,
-  /\b(shutdown|reboot|halt|poweroff)\b/i,
-  /\bmkfs\b/i,
-  /\bdd\s+if=/i,
-  /\bgit\s+reset\s+--hard/i,
-  /\bgit\s+clean\s+-[a-z]*[fd]/i,
-  /\b(taskkill|kill|pkill|killall)\b/i,
-  />\s*\/dev\/(sd|hd|disk)/i
-]
-export function isDangerousCommand(cmd: string): boolean {
-  return DANGEROUS_RE.some((re) => re.test(cmd))
-}
+// 命令安全分类已抽离至纯模块 cmdsafety.ts（便于单测），此处转出以兼容既有引用。
+export { isAppKiller, isDangerousCommand, isNetworkCommand }
 
 export interface ToolContext {
   root: string

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
-import { CatalogEntry, DataInfo, DiscoveredSkill, McpStatus, PermissionMode, SkillMeta } from '@shared/types'
+import { CatalogEntry, DataInfo, DiscoveredSkill, McpStatus, SkillMeta } from '@shared/types'
 import { MODES } from '../modes'
 import { THEMES } from '../themes'
 
@@ -654,7 +654,6 @@ function TabMcp(): JSX.Element {
   const refresh = (): void => void window.seek.mcpStatus().then(setList)
   useEffect(() => {
     refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function parseJson(s: string): Record<string, string> | undefined {
