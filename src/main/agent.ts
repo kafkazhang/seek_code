@@ -8,13 +8,15 @@ import {
   computeUsage,
   withRetry
 } from './gateway'
-import { toolDefs, execute, summarize, previewEdit, isDangerousCommand, WRITE_TOOLS } from './tools'
+import { toolDefs, execute, summarize, previewEdit, isDangerousCommand, WRITE_TOOLS, COMMAND_TOOLS } from './tools'
 import { mcpToolDefs, isMcpTool, callMcpTool } from './mcp'
 import { AgentEvent, EditPreview, PermissionMode, PriorMessage, ProjectInfo, ReasoningMode, SendOptions } from '@shared/types'
 import { getConfig } from './config'
 import { memoryContext } from './memory'
 import { symbolMap } from './codeindex'
 import { recognizeImages } from './ocr'
+import { normalizeTodos, renderTodos } from './todos'
+import { fetchWeb } from './webfetch'
 
 type ChatMsg = OpenAI.Chat.Completions.ChatCompletionMessageParam
 
@@ -25,6 +27,7 @@ interface Session {
 
 const sessions = new Map<string, Session>()
 const MAX_STEPS = 25
+const MAX_SUB_STEPS = 18 // 子代理单回合步数上限（略紧，防失控）
 const MAX_SESSIONS = 50 // 内存中保留的最大会话数，超出按最久未用淘汰（避免长期运行内存只增不减）
 
 /** 取/建会话，并按 LRU 维护：命中即移到末尾；超额淘汰最久未用（含中断其残留请求） */
@@ -159,6 +162,17 @@ export function abortSession(sessionId: string): void {
 }
 export function resetSession(sessionId: string): void {
   sessions.delete(sessionId)
+  approvedFetchHosts.delete(sessionId)
+}
+
+// web_fetch 已获批准的 host（按会话记忆，避免同一 host 反复弹审批）
+const approvedFetchHosts = new Map<string, Set<string>>()
+function hostOf(url: unknown): string | null {
+  try {
+    return new URL(String(url)).hostname || null
+  } catch {
+    return null
+  }
 }
 
 export async function runAgent(
@@ -174,11 +188,18 @@ export async function runAgent(
   const cfg = getConfig()
   const mode: ReasoningMode = options.reasoning ?? cfg.reasoning
   const perm: PermissionMode = options.permissionMode ?? cfg.permissionMode
+  const isSub = options.isSubagent === true
+  // 子代理：步数上限收紧，且不可再派生子代理（工具列表中剔除）
+  const maxSteps = isSub ? MAX_SUB_STEPS : MAX_STEPS
+  let baseToolDefs = isSub ? toolDefs.filter((d) => d.function.name !== 'spawn_subagents') : toolDefs
+  // 未绑定项目（通用助手模式）：只保留与项目无关的工具，文件/命令/检索类全部剔除
+  if (!project) baseToolDefs = baseToolDefs.filter((d) => PROJECTLESS_TOOLS.has(d.function.name))
   const client = getClient()
   const model = modelFor(mode)
-  // 计划模式：追加只读指令（置于消息尾部，不破坏稳定前缀缓存）
-  const planTail: ChatMsg | null =
-    perm === 'plan' ? { role: 'system', content: PLAN_DIRECTIVE } : null
+  // 尾部指令（置于消息尾部，不破坏稳定前缀缓存）：计划模式 / 未绑定项目模式
+  const tails: ChatMsg[] = []
+  if (perm === 'plan') tails.push({ role: 'system', content: PLAN_DIRECTIVE })
+  if (!project) tails.push({ role: 'system', content: NO_PROJECT_DIRECTIVE })
 
   const s = touchSession(sessionId)
   const abort = new AbortController()
@@ -238,17 +259,19 @@ export async function runAgent(
     withRetry(() => client.chat.completions.create(request, { signal: abort.signal }) as Promise<unknown>)
 
   let autoContinues = 0
+  // 防卡死：同名同参的工具调用反复失败时，注入提示强制其换方法（重读文件 / 换工具）
+  const failCounts = new Map<string, number>()
   try {
-    for (let step = 0; step < MAX_STEPS; step++) {
+    for (let step = 0; step < maxSteps; step++) {
       if (abort.signal.aborted) return void emit({ type: 'aborted', sessionId })
 
       // DeepSeek-V4：thinking 独立于 tools/temperature，三档均可带工具
       const req: any = {
         model,
-        messages: planTail ? [...prefix, ...s.history, planTail] : [...prefix, ...s.history],
+        messages: [...prefix, ...s.history, ...tails],
         thinking: thinkingFor(mode),
         temperature: 0.2,
-        tools: [...toolDefs, ...mcpToolDefs()],
+        tools: [...baseToolDefs, ...mcpToolDefs()],
         tool_choice: 'auto',
         stream: true,
         stream_options: { include_usage: true }
@@ -317,8 +340,10 @@ export async function runAgent(
         emit({ type: 'tool', sessionId, callId: t.id, name: t.name, args: t.args || '{}', status: 'running' })
 
         let result: string
-        if (!project) {
-          result = '请先打开一个项目文件夹，再进行文件或命令操作。'
+        // 通用助手模式：与项目无关的工具（todo_write / web_fetch / MCP）照常可用，其余拦下
+        if (!project && !PROJECTLESS_TOOLS.has(t.name) && !isMcpTool(t.name)) {
+          result =
+            '当前会话未绑定项目目录，文件/命令/检索类工具不可用。请提示用户点击输入框上方的「选择项目目录」绑定项目（绑定后本会话可直接继续，无需重开）。'
           emit({ type: 'tool', sessionId, callId: t.id, name: t.name, args: t.args || '{}', status: 'error', result })
           s.history.push({ role: 'tool', tool_call_id: t.id, content: result })
           continue
@@ -326,7 +351,7 @@ export async function runAgent(
 
         // 写/建文件：预先计算 diff（既供审批，也在完成后内联展示，让用户看到改动）
         let editPreview: EditPreview | undefined
-        if (t.name === 'write_file' || t.name === 'edit_file') {
+        if (project && (t.name === 'write_file' || t.name === 'edit_file' || t.name === 'multi_edit')) {
           editPreview = (await previewEdit(t.name, args, project.root)) ?? undefined
         }
 
@@ -340,10 +365,15 @@ export async function runAgent(
         }
 
         // 危险命令（如 taskkill / rm -rf / shutdown）即使在全自动模式也强制审批
-        const dangerousCmd = t.name === 'run_command' && isDangerousCommand(args.command ?? '')
+        const dangerousCmd =
+          (t.name === 'run_command' || t.name === 'run_background') && isDangerousCommand(args.command ?? '')
         // MCP 外部工具：在询问/接受编辑模式下需审批（可能有外部副作用）
         const mcpNeedsApproval = isMcpTool(t.name) && (perm === 'ask' || perm === 'acceptEdits')
-        if (needsApproval(perm, t.name) || dangerousCmd || mcpNeedsApproval) {
+        // web_fetch 突破默认出口白名单：任何模式（含全自动）都需审批；同会话同 host 批准过则放行
+        const fetchHost = t.name === 'web_fetch' ? hostOf(args.url) : null
+        const fetchNeedsApproval =
+          t.name === 'web_fetch' && (!fetchHost || !approvedFetchHosts.get(sessionId)?.has(fetchHost))
+        if (needsApproval(perm, t.name) || dangerousCmd || mcpNeedsApproval || fetchNeedsApproval) {
           const sum = dangerousCmd ? '⚠ 危险命令 · ' + summarize(t.name, args) : summarize(t.name, args)
           const ok = await approve(sessionId, t.name, sum, editPreview)
           if (!ok) {
@@ -352,12 +382,43 @@ export async function runAgent(
             s.history.push({ role: 'tool', tool_call_id: t.id, content: result })
             continue
           }
+          if (t.name === 'web_fetch' && fetchHost) {
+            const set = approvedFetchHosts.get(sessionId) ?? new Set<string>()
+            set.add(fetchHost)
+            approvedFetchHosts.set(sessionId, set)
+          }
         }
 
         try {
-          result = isMcpTool(t.name)
-            ? await callMcpTool(t.name, args)
-            : await execute(t.name, args, { root: project.root })
+          if (t.name === 'spawn_subagents') {
+            // 多代理编排：动态加载避免与 subagents.ts 形成静态循环依赖
+            const { runSubagents, parseSubagentGoals } = await import('./subagents')
+            if (!project) {
+              result = '未绑定项目目录，无法派生子代理。请先绑定项目。'
+            } else if (isSub) {
+              result = '子代理不可再派生子代理。请直接完成任务本身。'
+            } else {
+              const goals = parseSubagentGoals(args)
+              if (!goals.length) {
+                result = '参数错误：tasks 需为 1-6 个含 goal 字符串的对象数组。'
+              } else {
+                emit({ type: 'status', sessionId, text: `并行运行 ${goals.length} 个子代理…`, mode })
+                result = await runSubagents(sessionId, t.id, goals, project, mode, perm, emit, approve, abort.signal)
+              }
+            }
+          } else if (t.name === 'todo_write') {
+            const n = normalizeTodos(args.todos)
+            if (!n.ok) throw new Error(n.error)
+            emit({ type: 'todos', sessionId, todos: n.todos! })
+            result = renderTodos(n.todos!)
+          } else if (t.name === 'web_fetch') {
+            result = await fetchWeb(String(args.url ?? ''), args.max_chars, args.render === true)
+          } else if (isMcpTool(t.name)) {
+            result = await callMcpTool(t.name, args)
+          } else {
+            // 走到这里必有项目（无项目时非 MCP/PROJECTLESS 工具已被上方 guard 拦截）
+            result = await execute(t.name, args, { root: project!.root })
+          }
           emit({
             type: 'tool',
             sessionId,
@@ -368,8 +429,18 @@ export async function runAgent(
             result: clip(result, clipLimitFor(t.name)),
             preview: editPreview
           })
+          failCounts.delete(t.name + '|' + t.args) // 成功即清零
         } catch (e: any) {
           result = '错误：' + (e?.message ?? String(e))
+          const key = t.name + '|' + t.args
+          const n = (failCounts.get(key) ?? 0) + 1
+          failCounts.set(key, n)
+          if (n >= 2) {
+            result +=
+              `\n\n【系统提示】同样参数已连续失败 ${n} 次，不要原样重试。请换方法：` +
+              '先 read_file（可用 start_line/end_line）确认文件最新内容；编辑失败时按上面"最相近片段"修正 old_string；' +
+              '多处修改改用 multi_edit；必要时 write_file 整体重写该文件。'
+          }
           emit({ type: 'tool', sessionId, callId: t.id, name: t.name, args: t.args || '{}', status: 'error', result })
         }
         s.history.push({ role: 'tool', tool_call_id: t.id, content: result })
@@ -388,8 +459,13 @@ function clip(s: string, n = 800): string {
 
 // UI 展示用的工具结果截断上限（不影响回灌给模型的完整结果）。
 // 读类工具放宽，便于用户在面板里看清检索/读取到的内容。
-const READ_TOOLS = new Set(['read_file', 'search_code', 'grep', 'list_dir', 'read_skill'])
+const READ_TOOLS = new Set([
+  'read_file', 'search_code', 'grep', 'list_dir', 'read_skill', 'find_files', 'file_outline',
+  'find_definition', 'find_references', 'bg_output', 'web_fetch'
+])
 function clipLimitFor(name: string): number {
+  if (name === 'spawn_subagents') return 6000 // 多个子代理的结果汇总，放宽展示
+  if (name === 'project_check') return 3000 // 检查报错需要看全
   return READ_TOOLS.has(name) ? 2400 : 800
 }
 
@@ -415,10 +491,19 @@ function ocrFailNote(n: number): string {
 const PLAN_DIRECTIVE = `【计划模式 / Plan Mode】当前为只读模式：你可以使用 read_file / list_dir / grep 充分了解代码，但禁止调用 write_file / edit_file / run_command。
 请在调研后输出一份清晰的实施计划：要改动/新建的文件清单、关键步骤、风险点。不要实际修改任何东西——等用户批准并切换到执行模式后再动手。`
 
+// 未绑定项目时可用的工具（与项目根目录无关，且在执行处有独立分支、不经 execute(project.root)）：
+// 任务清单、联网读取。文件/命令/检索/Git/子代理等需要项目根目录的工具一律不暴露；
+// MCP 工具不依赖项目根，另行放行（见执行处 isMcpTool 判断）。
+const PROJECTLESS_TOOLS = new Set(['todo_write', 'web_fetch'])
+
+const NO_PROJECT_DIRECTIVE = `【通用助手模式】当前会话尚未绑定项目目录，因此无法读写文件、执行命令或检索代码库。
+你现在可以：解答编程/技术问题、讲解概念、联网查资料（web_fetch）、用 todo_write 帮用户梳理任务清单。
+当用户需要你实际阅读或修改其代码时，请提示："点击输入框上方的「选择项目目录」即可绑定项目，绑定后本会话可直接继续"——绑定项目前不要假装已读过其文件。`
+
 /** 按权限模式判断某工具是否需要用户批准 */
 function needsApproval(perm: PermissionMode, name: string): boolean {
   if (perm === 'auto' || perm === 'plan') return false
-  if (perm === 'acceptEdits') return name === 'run_command' // 仅命令需批准，编辑自动放行
+  if (perm === 'acceptEdits') return COMMAND_TOOLS.has(name) // 仅命令类需批准，编辑自动放行
   return WRITE_TOOLS.has(name) // ask：写入/命令均需批准
 }
 

@@ -12,7 +12,8 @@ import {
   ReasoningMode,
   Session,
   StoredTool,
-  ThemeId
+  ThemeId,
+  TodoItem
 } from '@shared/types'
 import { applyTheme } from './themes'
 
@@ -84,18 +85,21 @@ interface State {
   status: string
   settingsOpen: boolean
   dockOpen: boolean
-  dockTab: 'files' | 'preview' | 'terminal' | 'tasks'
+  dockTab: 'files' | 'preview' | 'terminal' | 'tasks' | 'git'
   tasks: BgTask[]
   previews: PreviewState[]
   activePreviewPath: string | null
   treeVersion: number
   palette: 'files' | 'search' | null
   balance: BalanceResult | null
+  /** 各会话的任务清单（todo_write 工具维护，不持久化） */
+  todos: Record<string, TodoItem[]>
+  clearTodos: (sessionId: string) => void
 
   init: () => Promise<void>
   loadBalance: () => Promise<void>
   setPalette: (p: 'files' | 'search' | null) => void
-  setDock: (open: boolean, tab?: 'files' | 'preview' | 'terminal' | 'tasks') => void
+  setDock: (open: boolean, tab?: 'files' | 'preview' | 'terminal' | 'tasks' | 'git') => void
   startBgTask: (goal: string, attachments?: Attachment[], reasoning?: ReasoningMode) => Promise<void>
   openPreview: (path: string) => Promise<void>
   closePreview: (path: string) => void
@@ -191,6 +195,13 @@ export const useStore = create<State>((set, get) => {
     treeVersion: 0,
     palette: null,
     balance: null,
+    todos: {},
+    clearTodos: (sessionId) =>
+      set((st) => {
+        const next = { ...st.todos }
+        delete next[sessionId]
+        return { todos: next }
+      }),
 
     active: () => get().sessions.find((s) => s.id === get().activeId) ?? null,
     loadBalance: async () => {
@@ -302,7 +313,8 @@ export const useStore = create<State>((set, get) => {
 
     pickProject: async () => {
       const cur = get().active()
-      if (!cur || cur.started) return // 已开始：项目锁定
+      // 锁定仅在「已开始且已绑过项目」时生效——首次绑定（含已开始的通用助手会话）始终允许
+      if (!cur || (cur.started && cur.projectRoot)) return
       const ref = await window.seek.openProject()
       if (!ref) return
       patch(cur.id, (s) => ({ ...s, projectRoot: ref.root, projectName: ref.name, updatedAt: Date.now() }))
@@ -368,12 +380,8 @@ export const useStore = create<State>((set, get) => {
         set({ settingsOpen: true })
         return
       }
-      if (!cur.projectRoot) {
-        await get().pickProject()
-        return // 选完目录后再次发送
-      }
+      // 未绑定项目也可对话（通用助手模式）：仅解答/查资料/列清单；需读写代码时再绑项目。
       const root = cur.projectRoot
-
       const { ctx, images, fileChips } = await composeContext(root, t, attachments)
 
       const prior: PriorMessage[] = cur.messages
@@ -624,10 +632,35 @@ export const useStore = create<State>((set, get) => {
             else tools.push(item)
             return { ...m, tools }
           })
-          // Agent 改动文件后，递增版本号触发文件树自动刷新
-          if (e.status === 'done' && (e.name === 'write_file' || e.name === 'edit_file')) {
+          // Agent 改动文件后，递增版本号触发文件树/Git 面板自动刷新（子代理可能批量改文件）
+          if (
+            e.status === 'done' &&
+            (e.name === 'write_file' ||
+              e.name === 'edit_file' ||
+              e.name === 'multi_edit' ||
+              e.name === 'spawn_subagents' ||
+              e.name === 'run_command')
+          ) {
             set((st) => ({ treeVersion: st.treeVersion + 1 }))
           }
+          persistSoon()
+          break
+        case 'todos':
+          set((st) => ({ todos: { ...st.todos, [id]: e.todos } }))
+          break
+        case 'subagent':
+          // 子代理进度：挂在对应 spawn_subagents 工具卡的 subs 上
+          patchLastBot(id, (m) => {
+            const tools = m.tools.map((t) => {
+              if (t.callId !== e.callId) return t
+              const subs = [...(t.subs ?? [])]
+              const i = subs.findIndex((s) => s.id === e.sub.id)
+              if (i >= 0) subs[i] = e.sub
+              else subs.push(e.sub)
+              return { ...t, subs }
+            })
+            return { ...m, tools }
+          })
           persistSoon()
           break
         case 'approval':

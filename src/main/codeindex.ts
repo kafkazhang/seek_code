@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { promises as fs, watch, FSWatcher, existsSync } from 'node:fs'
 import { join, relative, extname } from 'node:path'
+import { scanFile, SymbolHit } from './symbols'
 
 // 纯本地代码库索引：
 //  - 符号大纲（AST-lite，正则提取 function/class/type 等）→ 注入"代码地图"
@@ -54,10 +55,10 @@ const watchers = new Map<string, FSWatcher>()
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 // ── 持久化 ───────────────────────────────────────────
-function indexDir(): string {
+export function indexDir(): string {
   return join(app.getPath('userData'), 'index')
 }
-function hashRoot(root: string): string {
+export function hashRoot(root: string): string {
   let h = 5381
   for (let i = 0; i < root.length; i++) h = ((h << 5) + h + root.charCodeAt(i)) | 0
   return (h >>> 0).toString(36)
@@ -132,6 +133,23 @@ async function loadPersisted(root: string): Promise<Map<string, PersistedEntry> 
 
 export function invalidate(root: string): void {
   cache.delete(root)
+}
+
+// ── 文件变更钩子 ─────────────────────────────────────
+// 供其它索引（如语义向量索引）订阅增量更新；用回调注册而非直接 import，避免循环依赖。
+type FileChangeListener = (root: string, relPath: string, kind: 'update' | 'remove') => void
+const changeListeners: FileChangeListener[] = []
+export function onFileChange(l: FileChangeListener): void {
+  changeListeners.push(l)
+}
+function notifyChange(root: string, relPath: string, kind: 'update' | 'remove'): void {
+  for (const l of changeListeners) {
+    try {
+      l(root, relPath, kind)
+    } catch {
+      /* 监听者异常不影响索引本身 */
+    }
+  }
 }
 
 function tokenize(text: string): string[] {
@@ -306,6 +324,7 @@ export async function updateFile(root: string, relPath: string): Promise<void> {
   else idx.files.push(entry)
   rederive(idx)
   persistSoon(root)
+  notifyChange(root, rel, 'update')
 }
 
 /** 删除单个文件条目 */
@@ -318,6 +337,7 @@ export function removeFile(root: string, relPath: string): void {
   idx.files.splice(i, 1)
   rederive(idx)
   persistSoon(root)
+  notifyChange(root, rel, 'remove')
 }
 
 // ── 文件监听 ─────────────────────────────────────────
@@ -365,6 +385,25 @@ export function unwatchProject(root: string): void {
     }
     watchers.delete(root)
   }
+}
+
+// ── 符号导航（find_definition / find_references 用）────
+/**
+ * 在代码库中收集符号出现处：用倒排索引词法预过滤候选文件（免全库扫描），
+ * 再逐文件按行精确判定（定义行识别见 symbols.ts）。
+ */
+export async function findSymbolHits(root: string, symbol: string, maxHits = 50): Promise<SymbolHit[]> {
+  const idx = await buildIndex(root)
+  const tok = symbol.toLowerCase().replace(/\$/g, '')
+  if (tok.length < 2) return []
+  const candidates = idx.files.filter((f) => f.tf.has(tok)).slice(0, 200)
+  const hits: SymbolHit[] = []
+  for (const f of candidates) {
+    if (hits.length >= maxHits) break
+    await ensureLines(root, f)
+    hits.push(...scanFile(f.path, (f.lines ?? []).join('\n'), symbol, maxHits - hits.length))
+  }
+  return hits
 }
 
 /** BM25 检索，返回相关文件与命中行 */

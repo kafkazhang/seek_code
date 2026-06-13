@@ -14,6 +14,8 @@ export type PermissionMode = 'ask' | 'acceptEdits' | 'plan' | 'auto'
 export interface AppConfig {
   /** 是否已配置 API Key（不回传明文） */
   hasKey: boolean
+  /** 是否已配置向量服务 API Key（不回传明文） */
+  hasEmbedKey: boolean
   baseURL: string
   /** 快速档模型：deepseek-v4-flash（默认关闭 thinking） */
   flashModel: string
@@ -26,6 +28,12 @@ export interface AppConfig {
   permissionMode: PermissionMode
   /** 界面主题 */
   theme: ThemeId
+  /** 语义向量检索（embedding）开关：开启后 search_code 走 BM25+向量混合召回 */
+  semanticIndex: boolean
+  /** 向量服务接口地址（OpenAI 兼容 /embeddings）。DeepSeek 无向量模型，需用外部服务（如阿里 DashScope） */
+  embedBaseURL: string
+  /** 向量化模型 id（如 text-embedding-v3） */
+  embedModel: string
   /** 网络出口白名单（仅允许这些 host） */
   egressAllowlist: string[]
   /** 价格（人民币元 / 百万 token），用于成本估算 */
@@ -50,6 +58,11 @@ export interface ConfigPatch {
   reasoning?: ReasoningMode
   permissionMode?: PermissionMode
   theme?: ThemeId
+  semanticIndex?: boolean
+  embedBaseURL?: string
+  embedModel?: string
+  /** 向量服务 API Key（独立于 DeepSeek Key，safeStorage 加密存储） */
+  embedApiKey?: string
 }
 
 /** DeepSeek-V4 thinking 参数（嵌套于请求体 thinking 字段） */
@@ -86,6 +99,25 @@ export interface StoredTool {
   status: 'running' | 'done' | 'error' | 'denied'
   result?: string
   preview?: EditPreview
+  /** spawn_subagents 工具：各子代理的实时进度卡 */
+  subs?: SubagentUpdate[]
+}
+
+/** 任务清单项（todo_write 工具维护，聊天区清单卡展示） */
+export interface TodoItem {
+  content: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
+/** 子代理进度（spawn_subagents 编排时随事件流推送、内嵌于工具卡展示） */
+export interface SubagentUpdate {
+  id: string
+  goal: string
+  status: 'queued' | 'running' | 'done' | 'error'
+  lastAction: string
+  toolCount: number
+  /** 完成后的结果预览（截断） */
+  result?: string
 }
 
 export interface ChatMessage {
@@ -260,6 +292,8 @@ export type AgentEvent =
       summary: string
       preview?: EditPreview
     }
+  | { type: 'subagent'; sessionId: string; callId: string; sub: SubagentUpdate }
+  | { type: 'todos'; sessionId: string; todos: TodoItem[] }
   | { type: 'usage'; sessionId: string; usage: UsageSnapshot }
   | { type: 'done'; sessionId: string }
   | { type: 'error'; sessionId: string; message: string }
@@ -281,10 +315,62 @@ export interface UsageSnapshot {
 export interface SendOptions {
   reasoning?: ReasoningMode
   permissionMode?: PermissionMode
+  /** 内部标记：当前会话是子代理（禁用再派生子代理，步数上限更小） */
+  isSubagent?: boolean
+}
+
+// ── Git 面板 ─────────────────────────────────────────
+/** 一条文件变更（git status --porcelain=v1 -z 解析结果） */
+export interface GitFileChange {
+  path: string
+  /** 重命名前的原路径 */
+  origPath?: string
+  /** 暂存区状态码 X（' ' 表示无） */
+  x: string
+  /** 工作区状态码 Y（' ' 表示无） */
+  y: string
+}
+
+export interface GitStatusResult {
+  isRepo: boolean
+  branch?: string
+  /** 相对上游领先/落后提交数 */
+  ahead?: number
+  behind?: number
+  files: GitFileChange[]
+  error?: string
+}
+
+export interface GitLogEntry {
+  hash: string
+  author: string
+  date: string
+  subject: string
+}
+
+/** 单文件 diff 的两侧文本（供 Monaco DiffEditor） */
+export interface GitDiffPayload {
+  path: string
+  oldText: string
+  newText: string
+}
+
+export interface GitOpResult {
+  ok: boolean
+  output?: string
+  error?: string
+}
+
+/** AI 生成提交信息 / 变更评审的结果 */
+export interface GitAiResult {
+  ok: boolean
+  text?: string
+  error?: string
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
   hasKey: false,
+  hasEmbedKey: false,
   baseURL: 'https://api.deepseek.com',
   flashModel: 'deepseek-v4-flash',
   proModel: 'deepseek-v4-pro',
@@ -292,6 +378,10 @@ export const DEFAULT_CONFIG: AppConfig = {
   reasoning: 'balanced',
   permissionMode: 'ask',
   theme: 'abyss',
+  semanticIndex: false,
+  // DeepSeek 无向量模型，默认用阿里 DashScope 的 text-embedding-v3（OpenAI 兼容接口）
+  embedBaseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  embedModel: 'text-embedding-v3',
   egressAllowlist: ['api.deepseek.com'],
   // 价格为估算（元/百万 token），可在设置中调整；以官方计费为准
   pricing: { cacheHitInput: 0.5, cacheMissInput: 2, output: 8 }

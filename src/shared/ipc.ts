@@ -46,6 +46,19 @@ export const IPC = {
   taskStart: 'task:start',
   taskList: 'task:list',
   taskCancel: 'task:cancel',
+  // 语义向量索引
+  vecStatus: 'vec:status',
+  embedTest: 'vec:embed-test',
+  // Git 面板
+  gitStatus: 'git:status',
+  gitDiff: 'git:diff',
+  gitStage: 'git:stage',
+  gitUnstage: 'git:unstage',
+  gitDiscard: 'git:discard',
+  gitCommit: 'git:commit',
+  gitLog: 'git:log',
+  gitGenMsg: 'git:gen-msg',
+  gitReview: 'git:review',
   // 终端
   termExec: 'term:exec',
   termInput: 'term:input',

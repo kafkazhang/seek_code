@@ -7,6 +7,7 @@ import MarkdownView from './MarkdownView'
 import RichInput from './RichInput'
 import { CodeEditor } from './CodeEditor'
 import DragHandle from './DragHandle'
+import GitPanel from './GitPanel'
 import { ansiToSpans } from '../ansi'
 
 marked.setOptions({ breaks: true, gfm: true })
@@ -30,6 +31,7 @@ export default function ToolDock(): JSX.Element {
   const isExplorer = dockTab === 'files' || dockTab === 'preview'
   const TABS = [
     { key: 'files', label: '文件', active: isExplorer },
+    { key: 'git', label: 'Git', active: dockTab === 'git' },
     { key: 'terminal', label: '终端', active: dockTab === 'terminal' },
     { key: 'tasks', label: '任务', active: dockTab === 'tasks' }
   ] as const
@@ -61,6 +63,11 @@ export default function ToolDock(): JSX.Element {
             <div className="dock-pane" style={{ display: dockTab === 'terminal' ? 'flex' : 'none' }}>
               <TerminalTabs root={root} />
             </div>
+            {dockTab === 'git' && (
+              <div className="dock-pane" style={{ display: 'flex' }}>
+                <GitPanel root={root} />
+              </div>
+            )}
           </>
         ) : dockTab !== 'tasks' ? (
           <div className="dock-empty">当前会话未绑定项目目录</div>

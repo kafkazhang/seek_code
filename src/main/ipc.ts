@@ -3,12 +3,24 @@ import { promises as fs } from 'node:fs'
 import { basename, join, resolve, relative, isAbsolute } from 'node:path'
 import { IPC } from '@shared/ipc'
 import { getConfig, setConfig, clearAll, settingsPath, dataDir, hasApiKey } from './config'
-import { getClient, fim, getBalance } from './gateway'
+import { getClient, fim, getBalance, embedBatch } from './gateway'
 import { runAgent, abortSession, resetSession, ApprovalFn } from './agent'
 import { loadSessions, saveSessions, clearSessions, sessionsPath } from './sessions'
 import { termExec, termKill, termInput, resolveCd } from './terminal'
 import { readMemory, addMemory } from './memory'
 import { buildIndex, invalidate, grepContent, watchProject } from './codeindex'
+import { ensureVecIndex, vecStatus } from './vecindex'
+import {
+  gitStatus,
+  gitDiffFile,
+  gitStage,
+  gitUnstage,
+  gitDiscard,
+  gitCommit,
+  gitLog,
+  gitGenCommitMessage,
+  gitReviewChanges
+} from './git'
 import { startTask, listTasks, cancelTask, loadTasks } from './tasks'
 import { listSkills, readSkill, saveSkill, deleteSkill, seedSkills, installSkillFromUrl, updateSkill, discoverRepoSkills } from './skills'
 import { mcpStatus, addMcpServer, removeMcpServer, initMcp } from './mcp'
@@ -70,6 +82,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     const info = await buildProject(root)
     projectCache.set(root, info)
     void buildIndex(root) // 后台预热代码索引
+    void ensureVecIndex(root) // 语义向量索引（若启用）后台构建
     watchProject(root) // 监听文件变化，增量更新索引
     return { root: info.root, name: info.name }
   })
@@ -378,6 +391,37 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     cancelTask(id)
     return true
   })
+
+  // ── 语义向量索引状态 ──
+  ipcMain.handle(IPC.vecStatus, (_e, root: string | null) => {
+    if (root) void ensureVecIndex(root) // 查询即预热（仅启用时实际构建）
+    return vecStatus(root)
+  })
+
+  // ── 向量服务连通性测试（用当前已保存的 embedBaseURL + Key + 模型试嵌一段文本）──
+  ipcMain.handle(IPC.embedTest, async () => {
+    try {
+      const v = await embedBatch(['SeekCode embedding connectivity test.'])
+      const dim = v[0]?.length ?? 0
+      if (!dim) return { ok: false, error: '返回向量为空' }
+      return { ok: true, dim }
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? String(e) }
+    }
+  })
+
+  // ── Git 面板 ──
+  ipcMain.handle(IPC.gitStatus, (_e, root: string) => gitStatus(root))
+  ipcMain.handle(IPC.gitDiff, (_e, p: { root: string; path: string; staged: boolean }) =>
+    gitDiffFile(p.root, p.path, p.staged)
+  )
+  ipcMain.handle(IPC.gitStage, (_e, p: { root: string; paths: string[] }) => gitStage(p.root, p.paths))
+  ipcMain.handle(IPC.gitUnstage, (_e, p: { root: string; paths: string[] }) => gitUnstage(p.root, p.paths))
+  ipcMain.handle(IPC.gitDiscard, (_e, p: { root: string; path: string }) => gitDiscard(p.root, p.path))
+  ipcMain.handle(IPC.gitCommit, (_e, p: { root: string; message: string }) => gitCommit(p.root, p.message))
+  ipcMain.handle(IPC.gitLog, (_e, root: string) => gitLog(root))
+  ipcMain.handle(IPC.gitGenMsg, (_e, root: string) => gitGenCommitMessage(root))
+  ipcMain.handle(IPC.gitReview, (_e, root: string) => gitReviewChanges(root))
 }
 
 function mimeOf(path: string): string {

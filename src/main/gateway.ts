@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import { getApiKey, getConfig } from './config'
+import { getApiKey, getEmbedApiKey, getConfig } from './config'
 import { isEgressAllowed, guardedFetch } from './egress'
 import { BalanceResult, ProjectInfo, ReasoningMode, ThinkingParam, UsageSnapshot } from '@shared/types'
 
@@ -72,7 +72,12 @@ const STABLE_SYSTEM = `你是 SeekCode —— 一个运行在用户本机的 AI 
 4. 中文交流：用简洁中文回答；代码与命令保持原文。
 5. 谨慎执行：run_command 可能有副作用，仅在确有必要时使用，并说明意图。
 6. 进程安全：需要停止某个服务/进程时，**先按端口或 PID 精确定位再结束**（如 \`netstat -ano | findstr :端口\` / \`lsof -i :端口\` 找到 PID，再 \`taskkill /f /pid <PID>\` 或 \`kill <PID>\`）。**严禁**用 \`taskkill /im node.exe\`、\`killall node\`、\`pkill node\` 这类按名批量杀进程——那会把 SeekCode 自身一起杀掉。
-7. 善用技能：遇到特定任务（如代码审查、写提交信息）时，可先用 list_skills 查看是否有可复用技能，命中则 read_skill 加载后据其执行。`
+7. 善用技能：遇到特定任务（如代码审查、写提交信息）时，可先用 list_skills 查看是否有可复用技能，命中则 read_skill 加载后据其执行。
+8. 并行委派：当任务可拆成多个互相独立的子任务（大范围调研、多文件批量改造、互不依赖的功能点）时，用 spawn_subagents 一次并行委派多个子代理以显著提速；每个 goal 必须自包含；有先后依赖的步骤不要拆。
+9. 自检闭环：完成代码改动后，调用 project_check（自动探测项目的 typecheck/lint/test）或针对性 run_command 验证；有报错就继续修复并再次验证，**验证通过才算完成**，不要改完即总结。
+10. 高效读写：大文件先 file_outline 看结构，再用 read_file 的 start_line/end_line 精读相关区间；同一文件多处修改用 multi_edit 一次提交；edit_file 失败时按返回的"最相近片段"修正 old_string，严禁凭记忆原样重试；找文件用 find_files（glob），不要逐层 list_dir。
+11. 任务清单：超过 3 步的任务先用 todo_write 列出全部步骤，每完成一步立即更新状态（同时只有一项 in_progress），全部 completed 后才总结。
+12. 精准导航与常驻进程：修改/重命名/删除函数与类型前，先 find_references 找全调用点逐一核对（find_definition 定位定义）；dev server、watch 等常驻命令用 run_background 启动（bg_output 看日志、bg_kill 收尾），绝不用 run_command 阻塞等待；需要外部资料（报错含义、库 API 文档）时可用 web_fetch，每次需用户批准。`
 
 /**
  * 稳定系统前缀——刻意不随推理档位变化，使其在 fast/balanced/deep 间
@@ -157,6 +162,41 @@ export async function getBalance(): Promise<BalanceResult> {
   } catch (e: any) {
     return { ok: false, error: e?.message ?? String(e) }
   }
+}
+
+export class NoEmbedKeyError extends Error {
+  constructor() {
+    super('尚未配置向量服务 API Key')
+    this.name = 'NoEmbedKeyError'
+  }
+}
+
+/**
+ * 向量服务客户端（独立于 DeepSeek：DeepSeek 无向量模型，需外部 OpenAI 兼容服务，
+ * 如阿里 DashScope）。使用独立的 embedBaseURL + embedApiKey，并经出口白名单校验。
+ */
+export function getEmbedClient(): OpenAI {
+  const key = getEmbedApiKey()
+  if (!key) throw new NoEmbedKeyError()
+  const cfg = getConfig()
+  assertInferenceEgress(cfg.embedBaseURL)
+  return new OpenAI({ apiKey: key, baseURL: cfg.embedBaseURL })
+}
+
+/**
+ * 批量文本向量化（OpenAI 兼容 /embeddings）。供语义向量索引使用；
+ * 未配置 Key / 接口不可用时由调用方降级为纯 BM25。
+ */
+export async function embedBatch(texts: string[]): Promise<number[][]> {
+  if (!texts.length) return []
+  const client = getEmbedClient()
+  const cfg = getConfig()
+  const res = await client.embeddings.create({ model: cfg.embedModel, input: texts })
+  // 按 index 还原顺序（协议允许乱序返回）
+  const out: number[][] = new Array(texts.length)
+  for (const d of res.data ?? []) out[d.index] = d.embedding as number[]
+  if (out.some((v) => !Array.isArray(v))) throw new Error('embeddings 返回数据不完整')
+  return out
 }
 
 /** FIM 代码补全（DeepSeek beta completions，prefix + suffix） */

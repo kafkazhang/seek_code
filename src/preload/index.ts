@@ -12,6 +12,11 @@ import {
   FileNode,
   CatalogEntry,
   DiscoveredSkill,
+  GitAiResult,
+  GitDiffPayload,
+  GitLogEntry,
+  GitOpResult,
+  GitStatusResult,
   McpStatus,
   MemorySnapshot,
   SkillMeta,
@@ -140,6 +145,31 @@ const api = {
     ipcRenderer.on(IPC.termEvent, listener)
     return () => ipcRenderer.removeListener(IPC.termEvent, listener)
   },
+
+  // 语义向量索引状态（设置页展示；查询即触发后台预热）
+  vecStatus: (
+    root: string | null
+  ): Promise<{ state: string; chunks: number; model: string; reason?: string }> =>
+    ipcRenderer.invoke(IPC.vecStatus, root),
+  // 向量服务连通性测试（用已保存的向量配置试嵌一段文本）
+  embedTest: (): Promise<{ ok: boolean; dim?: number; error?: string }> =>
+    ipcRenderer.invoke(IPC.embedTest),
+
+  // Git 面板
+  gitStatus: (root: string): Promise<GitStatusResult> => ipcRenderer.invoke(IPC.gitStatus, root),
+  gitDiff: (root: string, path: string, staged: boolean): Promise<GitDiffPayload> =>
+    ipcRenderer.invoke(IPC.gitDiff, { root, path, staged }),
+  gitStage: (root: string, paths: string[]): Promise<GitOpResult> =>
+    ipcRenderer.invoke(IPC.gitStage, { root, paths }),
+  gitUnstage: (root: string, paths: string[]): Promise<GitOpResult> =>
+    ipcRenderer.invoke(IPC.gitUnstage, { root, paths }),
+  gitDiscard: (root: string, path: string): Promise<GitOpResult> =>
+    ipcRenderer.invoke(IPC.gitDiscard, { root, path }),
+  gitCommit: (root: string, message: string): Promise<GitOpResult> =>
+    ipcRenderer.invoke(IPC.gitCommit, { root, message }),
+  gitLog: (root: string): Promise<GitLogEntry[]> => ipcRenderer.invoke(IPC.gitLog, root),
+  gitGenMsg: (root: string): Promise<GitAiResult> => ipcRenderer.invoke(IPC.gitGenMsg, root),
+  gitReview: (root: string): Promise<GitAiResult> => ipcRenderer.invoke(IPC.gitReview, root),
 
   send: (payload: {
     sessionId: string

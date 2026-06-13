@@ -122,21 +122,47 @@ export default function Settings(): JSX.Element {
 // ── 模型与接入 ───────────────────────────────────────
 function TabModel(): JSX.Element {
   const { config, saveConfig } = useStore()
+  const projectRoot = useStore((s) => s.active()?.projectRoot ?? null)
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
   const [baseURL, setBaseURL] = useState(config?.baseURL ?? 'https://api.deepseek.com')
   const [flashModel, setFlash] = useState(config?.flashModel ?? 'deepseek-v4-flash')
   const [proModel, setPro] = useState(config?.proModel ?? 'deepseek-v4-pro')
   const [fimModel, setFim] = useState(config?.fimModel ?? 'deepseek-v4-flash')
+  const [semanticIndex, setSemantic] = useState(config?.semanticIndex ?? false)
+  const [embedBaseURL, setEmbedBase] = useState(
+    config?.embedBaseURL ?? 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+  )
+  const [embedModel, setEmbed] = useState(config?.embedModel ?? 'text-embedding-v3')
+  const [embedKey, setEmbedKey] = useState('')
+  const [showEmbedKey, setShowEmbedKey] = useState(false)
+  const [vecInfo, setVecInfo] = useState<{ state: string; chunks: number; reason?: string } | null>(null)
+  const [embedTesting, setEmbedTesting] = useState(false)
+  const [embedResult, setEmbedResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [testing, setTesting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [saved, setSaved] = useState(false)
   const hasKey = config?.hasKey ?? false
+  const hasEmbedKey = config?.hasEmbedKey ?? false
 
   function patchObj(): any {
-    const p: any = { baseURL, flashModel, proModel, fimModel }
+    const p: any = { baseURL, flashModel, proModel, fimModel, semanticIndex, embedBaseURL, embedModel }
     if (apiKey.trim()) p.apiKey = apiKey.trim()
+    if (embedKey.trim()) p.embedApiKey = embedKey.trim()
     return p
+  }
+  async function loadVecInfo(): Promise<void> {
+    setVecInfo(await window.seek.vecStatus(projectRoot))
+  }
+  async function testEmbed(): Promise<void> {
+    setEmbedTesting(true)
+    setEmbedResult(null)
+    await saveConfig(patchObj()) // 先落盘当前向量配置，再用它测试
+    const r = await window.seek.embedTest()
+    setEmbedTesting(false)
+    setEmbedResult(
+      r.ok ? { ok: true, text: `连接成功 ✓ 向量维度 ${r.dim}` } : { ok: false, text: `连接失败：${r.error}` }
+    )
   }
   async function save(): Promise<void> {
     await saveConfig(patchObj())
@@ -196,6 +222,73 @@ function TabModel(): JSX.Element {
         <label>FIM 补全模型</label>
         <input value={fimModel} onChange={(e) => setFim(e.target.value)} />
         <div className="tip">编辑器内 Tab 补全使用的模型（DeepSeek FIM 接口）。</div>
+      </div>
+
+      <div className="field">
+        <label className="check-row">
+          <input type="checkbox" checked={semanticIndex} onChange={(e) => setSemantic(e.target.checked)} />
+          语义向量检索（与 BM25 混合召回）
+        </label>
+        <div className="tip">
+          开启后对代码库分块向量化（OpenAI 兼容 /embeddings，按内容缓存、增量更新），search_code 走「BM25 +
+          向量」RRF 混合召回；未配置/接口不可用时自动回退纯 BM25。会产生少量 embedding 费用。
+          <br />
+          <b>DeepSeek 暂无向量模型，需单独配置外部向量服务</b>（默认：阿里 DashScope · text-embedding-v3）。
+        </div>
+        {semanticIndex && (
+          <div className="embed-cfg">
+            <label>向量服务接口地址（Base URL）</label>
+            <input
+              value={embedBaseURL}
+              onChange={(e) => setEmbedBase(e.target.value)}
+              placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
+            />
+            <label style={{ marginTop: 8 }}>向量服务 API Key</label>
+            <div className="key-row">
+              <input
+                type={showEmbedKey ? 'text' : 'password'}
+                value={embedKey}
+                onChange={(e) => setEmbedKey(e.target.value)}
+                placeholder={hasEmbedKey ? '已配置（如需更换请粘贴新 Key）' : 'sk-... / DashScope API Key'}
+              />
+              <button className="key-eye" onClick={() => setShowEmbedKey((v) => !v)}>
+                {showEmbedKey ? '隐藏' : '显示'}
+              </button>
+            </div>
+            <label style={{ marginTop: 8 }}>向量化模型 id</label>
+            <input value={embedModel} onChange={(e) => setEmbed(e.target.value)} placeholder="text-embedding-v3" />
+            <div className="tip">
+              独立于 DeepSeek Key，经操作系统级加密单独保存。出口白名单会自动加入该接口域名。
+              {vecInfo && (
+                <>
+                  {' · 当前索引：'}
+                  {vecInfo.state === 'ready'
+                    ? `就绪 · ${vecInfo.chunks} 块`
+                    : vecInfo.state === 'building'
+                      ? `构建中 · 已 ${vecInfo.chunks} 块`
+                      : vecInfo.state === 'nokey'
+                        ? '未配置向量 Key'
+                        : vecInfo.state === 'unavailable'
+                          ? `接口不可用（${vecInfo.reason ?? ''}），已回退 BM25`
+                          : vecInfo.state === 'disabled'
+                            ? '未启用'
+                            : '待构建（打开项目或首次检索时构建）'}
+                </>
+              )}
+            </div>
+            {embedResult && (
+              <div className={'test-result ' + (embedResult.ok ? 'ok' : 'bad')}>{embedResult.text}</div>
+            )}
+            <div className="acts" style={{ marginTop: 8 }}>
+              <button className="btn ghost" onClick={() => void testEmbed()} disabled={embedTesting}>
+                {embedTesting ? '测试中…' : '测试向量连接'}
+              </button>
+              <button className="link-btn" onClick={() => void loadVecInfo()}>
+                查询索引状态
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {result && <div className={'test-result ' + (result.ok ? 'ok' : 'bad')}>{result.text}</div>}

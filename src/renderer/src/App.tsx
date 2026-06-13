@@ -151,6 +151,7 @@ export default function App(): JSX.Element {
           <main className="center">
             <ConvHeader />
             <Chat />
+            <TodoBar />
             <Composer />
           </main>
           {s.dockOpen && <ToolDock />}
@@ -297,7 +298,7 @@ function ConvHeader(): JSX.Element | null {
   const dockTab = useStore((st) => st.dockTab)
   const setDock = useStore((st) => st.setDock)
   if (!cur) return null
-  const toggle = (tab: 'files' | 'terminal' | 'tasks'): void =>
+  const toggle = (tab: 'files' | 'terminal' | 'tasks' | 'git'): void =>
     dockOpen && dockTab === tab ? setDock(false) : setDock(true, tab)
   const activeTool = (tab: string): boolean => dockOpen && dockTab === tab
   return (
@@ -311,6 +312,15 @@ function ConvHeader(): JSX.Element | null {
                 <path d="M3 7l2-3h6l2 3h6v12H3z" />
               </svg>
               文件
+            </button>
+            <button className={'ctool' + (activeTool('git') ? ' on' : '')} onClick={() => toggle('git')} title="Git 面板 / 变更评审">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <circle cx="6" cy="6" r="2.4" />
+                <circle cx="6" cy="18" r="2.4" />
+                <circle cx="18" cy="8" r="2.4" />
+                <path d="M6 8.4v7.2M18 10.4c0 3-3 4-6 4" />
+              </svg>
+              Git
             </button>
             <button className={'ctool' + (activeTool('terminal') ? ' on' : '')} onClick={() => toggle('terminal')} title="终端">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
@@ -370,7 +380,7 @@ function Chat(): JSX.Element {
           <p>
             {cur?.projectName
               ? `已绑定项目「${cur.projectName}」，直接提问吧。`
-              : '先在下方选择项目目录（开始后将锁定），再开始对话。'}
+              : '可直接提问（解答 / 查资料 / 列清单）；需要我读写代码时，在下方绑定项目目录即可。'}
           </p>
           <div className="hints">
             <div className="hint">“梳理这个项目的整体结构”</div>
@@ -437,7 +447,8 @@ function ToolCall({ t }: { t: StoredTool }): JSX.Element {
   const openPreview = useStore((s) => s.openPreview)
   const [open, setOpen] = useState(false)
   const path = toolPath(t.args)
-  const canOpen = !!path && (t.name === 'read_file' || t.name === 'write_file' || t.name === 'edit_file')
+  const canOpen =
+    !!path && (t.name === 'read_file' || t.name === 'write_file' || t.name === 'edit_file' || t.name === 'multi_edit')
   const showDiff = !!t.preview && t.preview.oldText !== t.preview.newText
   const result = (t.result ?? '').trim()
   const running = t.status === 'running'
@@ -472,6 +483,28 @@ function ToolCall({ t }: { t: StoredTool }): JSX.Element {
         <span className="res">{statusText}</span>
         {hasDetail && <span className="tc-caret">{open ? '▾' : '▸'}</span>}
       </div>
+      {/* 子代理进度卡：编排期间实时展示，无需展开 */}
+      {t.subs && t.subs.length > 0 && (
+        <div className="sub-list">
+          {t.subs.map((su) => (
+            <div key={su.id} className={'sub-card ' + su.status}>
+              <span className="sub-ind" aria-hidden>
+                {su.status === 'running' ? <span className="tc-spin" /> : su.status === 'done' ? '✓' : su.status === 'error' ? '✗' : '…'}
+              </span>
+              <div className="sub-main">
+                <div className="sub-goal" title={su.goal}>
+                  {su.goal}
+                </div>
+                <div className="sub-meta">
+                  {su.status === 'queued' ? '排队中' : su.status === 'running' ? '运行中' : su.status === 'done' ? '已完成' : '失败'} ·{' '}
+                  {su.toolCount} 次工具 · {su.lastAction}
+                </div>
+                {su.result && su.status === 'done' && <div className="sub-result">{su.result}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {open && hasDetail && (
         <div className="tc-body">
           {showDiff && <DiffView preview={t.preview!} />}
@@ -628,6 +661,7 @@ function Message({ m }: { m: ChatMessage }): JSX.Element {
 function shortArgs(args: string): string {
   try {
     const o = JSON.parse(args)
+    if (Array.isArray(o.tasks)) return `${o.tasks.length} 个并行子任务`
     if (o.path) return o.path
     if (o.command) return o.command
     if (o.pattern) return `/${o.pattern}/`
@@ -658,6 +692,52 @@ function toolPath(args: string): string | null {
   } catch {
     return null
   }
+}
+
+// ── 任务清单卡（todo_write 工具维护，Composer 上方常驻）──
+function TodoBar(): JSX.Element | null {
+  const cur = useStore((st) => st.active())
+  const todos = useStore((st) => (cur ? st.todos[cur.id] : undefined))
+  const clearTodos = useStore((st) => st.clearTodos)
+  const [open, setOpen] = useState(true)
+  if (!cur || !todos || todos.length === 0) return null
+  const done = todos.filter((t) => t.status === 'completed').length
+  const active = todos.find((t) => t.status === 'in_progress')
+  return (
+    <div className={'todo-bar' + (open ? ' open' : '')}>
+      <div className="todo-head" onClick={() => setOpen((o) => !o)}>
+        <span className="todo-prog">
+          {done}/{todos.length}
+        </span>
+        <span className="todo-title">
+          {done === todos.length ? '任务清单 · 全部完成 ✓' : (active?.content ?? '任务清单')}
+        </span>
+        <span className="todo-caret">{open ? '▾' : '▴'}</span>
+        <button
+          className="todo-x"
+          title="隐藏清单"
+          onClick={(e) => {
+            e.stopPropagation()
+            clearTodos(cur.id)
+          }}
+        >
+          ✕
+        </button>
+      </div>
+      {open && (
+        <div className="todo-list">
+          {todos.map((t, i) => (
+            <div key={i} className={'todo-item ' + t.status}>
+              <span className="ti-mark">
+                {t.status === 'completed' ? '✓' : t.status === 'in_progress' ? <span className="tc-spin" /> : '○'}
+              </span>
+              <span className="ti-text">{t.content}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── Composer：项目选择（开始后锁定）+ 推理档位 + 输入 ──────
@@ -714,16 +794,17 @@ function Composer(): JSX.Element {
   const cur = useStore((st) => st.active())
   const busy = !!(cur && running[cur.id])
   const hasProject = !!cur?.projectRoot
-  const locked = !!cur?.started
+  // 锁定仅在「已开始且已绑过项目」时生效；未绑定的会话即使已开始也可随时补绑项目
+  const locked = !!cur?.started && hasProject
   const root = cur?.projectRoot ?? null
 
   return (
     <div className="composer">
       <div className="seg-row">
         <button
-          className={'proj-chip' + (hasProject ? '' : ' need') + (locked ? ' locked' : '')}
+          className={'proj-chip' + (locked ? ' locked' : '')}
           onClick={() => !locked && pickProject()}
-          title={locked ? '会话已开始，项目目录已锁定' : '选择 / 更改项目目录'}
+          title={locked ? '会话已开始，项目目录已锁定' : hasProject ? '更改项目目录' : '绑定项目目录（可选；绑定后可读写代码）'}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M3 7l2-3h6l2 3h6v12H3z" />
@@ -735,7 +816,7 @@ function Composer(): JSX.Element {
               <path d="M8 11V8a4 4 0 0 1 8 0v3" />
             </svg>
           ) : (
-            <span className="ch-hint">{hasProject ? '可更改' : '必选'}</span>
+            <span className="ch-hint">{hasProject ? '可更改' : '可选'}</span>
           )}
         </button>
         <div className="spacer" />
@@ -754,7 +835,11 @@ function Composer(): JSX.Element {
         busy={busy}
         onStop={abort}
         onSubmit={(t, a) => void send(t, a)}
-        placeholder={hasProject ? '描述任务，回车发送 · / 命令 · @ 文件 · 可粘贴/拖入图片…' : '请先选择项目目录，再开始对话…'}
+        placeholder={
+          hasProject
+            ? '描述任务，回车发送 · / 命令 · @ 文件 · 可粘贴/拖入图片…'
+            : '直接提问，回车发送 · 需读写代码时点上方「选择项目目录」绑定…'
+        }
         sendTitle="发送"
       />
     </div>

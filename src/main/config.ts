@@ -17,7 +17,7 @@ function atomicWrite(p: string, content: string | Buffer): void {
 //  - apikey.bin 存经 safeStorage（操作系统级）加密的 API Key
 // 全部位于 userData 目录，纯本地，卸载即清除。
 
-type PersistShape = Omit<AppConfig, 'hasKey'>
+type PersistShape = Omit<AppConfig, 'hasKey' | 'hasEmbedKey'>
 
 let cache: AppConfig | null = null
 
@@ -26,6 +26,9 @@ export function settingsPath(): string {
 }
 export function keyPath(): string {
   return join(app.getPath('userData'), 'apikey.bin')
+}
+export function embedKeyPath(): string {
+  return join(app.getPath('userData'), 'embedkey.bin')
 }
 export function dataDir(): string {
   return app.getPath('userData')
@@ -50,16 +53,17 @@ function loadPersisted(): PersistShape {
 }
 
 function stripHasKey(c: AppConfig): PersistShape {
-  const { hasKey: _omit, ...rest } = c
+  const { hasKey: _o1, hasEmbedKey: _o2, ...rest } = c
   return rest
 }
 
 export function getConfig(): AppConfig {
   if (!cache) {
     const persisted = loadPersisted()
-    cache = { ...persisted, hasKey: hasApiKey() }
+    cache = { ...persisted, hasKey: hasApiKey(), hasEmbedKey: hasEmbedApiKey() }
   } else {
     cache.hasKey = hasApiKey()
+    cache.hasEmbedKey = hasEmbedApiKey()
   }
   return cache
 }
@@ -69,23 +73,34 @@ export function setConfig(patch: ConfigPatch): AppConfig {
   const next: AppConfig = { ...current }
 
   if (patch.apiKey !== undefined) saveApiKey(patch.apiKey)
+  if (patch.embedApiKey !== undefined) saveEmbedApiKey(patch.embedApiKey)
   if (patch.baseURL !== undefined) next.baseURL = patch.baseURL.trim().replace(/\/+$/, '')
+  if (patch.embedBaseURL !== undefined) next.embedBaseURL = patch.embedBaseURL.trim().replace(/\/+$/, '')
   if (patch.flashModel !== undefined) next.flashModel = patch.flashModel.trim()
   if (patch.proModel !== undefined) next.proModel = patch.proModel.trim()
   if (patch.fimModel !== undefined) next.fimModel = patch.fimModel.trim()
   if (patch.reasoning !== undefined) next.reasoning = patch.reasoning
   if (patch.permissionMode !== undefined) next.permissionMode = patch.permissionMode
   if (patch.theme !== undefined) next.theme = patch.theme
+  if (patch.semanticIndex !== undefined) next.semanticIndex = patch.semanticIndex
+  if (patch.embedModel !== undefined) next.embedModel = patch.embedModel.trim()
 
-  // 出口白名单跟随 baseURL 自动同步
+  // 出口白名单跟随 baseURL / 向量服务 baseURL 自动同步
+  const hosts = ['api.deepseek.com']
   try {
-    next.egressAllowlist = Array.from(new Set(['api.deepseek.com', new URL(next.baseURL).hostname]))
+    hosts.push(new URL(next.baseURL).hostname)
   } catch {
-    next.egressAllowlist = ['api.deepseek.com']
+    /* baseURL 非法则忽略 */
   }
+  try {
+    if (next.embedBaseURL) hosts.push(new URL(next.embedBaseURL).hostname)
+  } catch {
+    /* embedBaseURL 非法则忽略 */
+  }
+  next.egressAllowlist = Array.from(new Set(hosts))
 
   atomicWrite(settingsPath(), JSON.stringify(stripHasKey(next), null, 2))
-  cache = { ...next, hasKey: hasApiKey() }
+  cache = { ...next, hasKey: hasApiKey(), hasEmbedKey: hasEmbedApiKey() }
   return cache
 }
 
@@ -99,6 +114,11 @@ export function clearAll(): void {
   }
   try {
     rmSync(keyPath(), { force: true })
+  } catch {
+    /* ignore */
+  }
+  try {
+    rmSync(embedKeyPath(), { force: true })
   } catch {
     /* ignore */
   }
@@ -132,4 +152,41 @@ export function getApiKey(): string | null {
 
 export function hasApiKey(): boolean {
   return !!getApiKey()
+}
+
+// ── 向量服务 API Key（独立加密落盘；DeepSeek 无向量模型，需用外部服务）──
+export function saveEmbedApiKey(key: string): void {
+  const trimmed = key.trim()
+  // 传空字符串表示清除已配置的向量 Key
+  if (!trimmed) {
+    try {
+      rmSync(embedKeyPath(), { force: true })
+    } catch {
+      /* ignore */
+    }
+    return
+  }
+  if (safeStorage.isEncryptionAvailable()) {
+    atomicWrite(embedKeyPath(), safeStorage.encryptString(trimmed))
+  } else {
+    atomicWrite(embedKeyPath(), Buffer.from('plain:' + trimmed, 'utf-8'))
+  }
+}
+
+export function getEmbedApiKey(): string | null {
+  try {
+    if (!existsSync(embedKeyPath())) return null
+    const buf = readFileSync(embedKeyPath())
+    if (buf.subarray(0, 6).toString('utf-8') === 'plain:') {
+      return buf.subarray(6).toString('utf-8')
+    }
+    if (safeStorage.isEncryptionAvailable()) return safeStorage.decryptString(buf)
+    return null
+  } catch {
+    return null
+  }
+}
+
+export function hasEmbedApiKey(): boolean {
+  return !!getEmbedApiKey()
 }
