@@ -116,7 +116,7 @@ export default function App(): JSX.Element {
               <b>
                 Seek<span>Code</span>
               </b>{' '}
-              <small>v0.1</small>
+              <small>v{__APP_VERSION__}</small>
             </div>
           </div>
 
