@@ -1,4 +1,5 @@
 <div align="center">
+<img width="300" height="300" alt="seekcode" src="https://github.com/user-attachments/assets/cf9fe270-c243-4c46-a942-61a5ff49257f" />
 
 # SeekCode
 
@@ -272,3 +273,7 @@ A：应用自身默认只与 DeepSeek 通信（你的提问与上下文），代
 Copyright © 2026 SeekCode
 
 「SeekCode」名称与标识仅用于指代本项目，不等同于对商标或商业品牌的额外授权。
+
+联系作者：
+<img width="683" height="838" alt="6d6267e2a923688215265cfb4dcc9301" src="https://github.com/user-attachments/assets/b7a2cd7c-4294-437c-83a4-5179f6aeb4fb" />
+
