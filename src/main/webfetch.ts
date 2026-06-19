@@ -3,8 +3,8 @@ import { guardedFetch, registerTrustedHost } from './egress'
 import { htmlToText, htmlTitle, looksLikeSpaShell } from './htmltext'
 
 // 受控联网读取（对标 Claude Code 的 WebFetch，但服从 SeekCode 的出口白名单模型）：
-//  - 任何权限模式下 web_fetch 都强制弹审批（见 agent.ts），用户批准后才把该 host
-//    注册进「用户显式信任」出口（egress.ts userTrustedHosts），再经 guardedFetch 出网；
+//  - ask/acceptEdits/plan 模式下 web_fetch 强制弹审批（见 agent.ts）；全自动模式视为已授权联网，直接放行。
+//    无论哪种路径，调用本函数即把该 host 注册进「用户显式信任」出口（egress.ts userTrustedHosts），再经 guardedFetch 出网；
 //  - 只发 GET、不带任何用户代码/上下文，响应转纯文本并截断后回灌模型。
 
 const FETCH_TIMEOUT_MS = 20_000
@@ -14,7 +14,7 @@ const DEFAULT_CLIP = 8_000
 // ── SPA 沙箱渲染 ─────────────────────────────────────
 // 纯 GET 抓不到 JS 渲染的内容（SPA 返回空壳 HTML）。SeekCode 内置 Chromium，
 // 用一个隐藏的沙箱 BrowserWindow 把页面真正渲染出来再取 body.innerText：
-//  - 仅在用户批准该 host 之后才会进入（web_fetch 的审批闸门在 agent.ts）；
+//  - 仅在 web_fetch 通过审批闸门（或全自动放行）之后才会进入（闸门在 agent.ts）；
 //  - 独立内存 partition（不落盘、不与应用窗口共享 Cookie），每次用完清空存储；
 //  - sandbox + contextIsolation、无 preload、无 Node；拒绝弹窗 / 下载 / 权限请求；
 //  - 屏蔽 image/media/font 子资源（提速且收窄出网面），提取完即销毁窗口。
@@ -102,7 +102,7 @@ function formatResult(url: string, title: string | null | undefined, text: strin
   return (title ? `【${title}】\n` : '') + `来源：${url}${via ? `（${via}）` : ''}\n\n` + (clipped || '（页面无文本内容）')
 }
 
-/** 经用户批准后调用：注册信任 host → 受控 GET → SPA 空壳时自动沙箱渲染兜底 */
+/** 通过审批闸门（或全自动放行）后调用：注册信任 host → 受控 GET → SPA 空壳时自动沙箱渲染兜底 */
 export async function fetchWeb(url: string, maxChars?: number, render = false): Promise<string> {
   let u: URL
   try {

@@ -1,16 +1,16 @@
-import { app } from 'electron'
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { MemorySnapshot } from '@shared/types'
+import { dataRoot } from './dataroot'
 
 // 记忆系统（纯本地文件）：
 //  - 项目记忆 SEEK.md：随项目根目录存放，可随仓库提交、团队共享
-//  - 全局记忆 memory.md：用户偏好，存 userData
+//  - 全局记忆 memory.md：用户偏好，存 <dataRoot>
 
 const MAX = 16_000 // 注入上下文的记忆上限（字符）
 
 function globalMemoryPath(): string {
-  return join(app.getPath('userData'), 'memory.md')
+  return join(dataRoot(), 'memory.md')
 }
 
 export function readProjectMemory(root: string | null): string | null {

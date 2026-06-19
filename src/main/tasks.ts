@@ -1,8 +1,9 @@
-import { app, Notification } from 'electron'
+import { Notification } from 'electron'
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { runAgent, abortSession } from './agent'
 import { AgentEvent, BgTask, BgTaskEvent, ProjectInfo, ReasoningMode } from '@shared/types'
+import { dataRoot } from './dataroot'
 
 interface TaskOpts {
   reasoning?: ReasoningMode
@@ -13,7 +14,7 @@ interface TaskOpts {
 // Agent 任务是 I/O 密集（等 LLM / 文件），并发即可获得真实并行度。
 //
 // 相比早期实现，本版补齐两点：
-//   1) 持久化：任务落盘 userData/tasks.json，重启后恢复列表（运行中的任务会被标记为中断）。
+//   1) 持久化：任务落盘 <dataRoot>/tasks.json，重启后恢复列表（运行中的任务会被标记为中断）。
 //   2) 队列化：限制最大并发数，超出的任务进入队列，待空位释放后自动出队执行。
 
 const MAX_CONCURRENT = 2 // 最大并行任务数（其余排队）
@@ -30,7 +31,7 @@ type Emit = (e: BgTaskEvent) => void
 
 // ── 持久化 ───────────────────────────────────────────
 function tasksPath(): string {
-  return join(app.getPath('userData'), 'tasks.json')
+  return join(dataRoot(), 'tasks.json')
 }
 function atomicWrite(p: string, content: string): void {
   const dir = dirname(p)

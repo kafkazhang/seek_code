@@ -14,7 +14,8 @@ export const IPC = {
   agentReset: 'agent:reset',
   toolApprove: 'tool:approve',
   dataInfo: 'data:info',
-  dataClear: 'data:clear',
+  dataChangeDir: 'data:change-dir',
+  appRelaunch: 'app:relaunch',
   // 文件列表与预览
   projectTree: 'project:tree',
   fileRead: 'file:read',

@@ -869,12 +869,36 @@ function TabMcp(): JSX.Element {
 
 // ── 数据与隐私 ───────────────────────────────────────
 function TabData(): JSX.Element {
-  const clearAllData = useStore((s) => s.clearAllData)
   const [info, setInfo] = useState<DataInfo | null>(null)
-  const [confirm, setConfirm] = useState(false)
+  const [changing, setChanging] = useState(false)
+  const [changeMsg, setChangeMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [needRestart, setNeedRestart] = useState(false)
   useEffect(() => {
     void window.seek.getDataInfo().then(setInfo)
   }, [])
+
+  async function changeDir(): Promise<void> {
+    setChanging(true)
+    setChangeMsg(null)
+    const r = await window.seek.changeDataDir()
+    setChanging(false)
+    if (!r.ok) {
+      if (r.error === 'cancelled') return // 用户取消选择，静默
+      setChangeMsg({ ok: false, text: `更改失败：${r.error}` })
+      return
+    }
+    if (r.from === r.to) {
+      setChangeMsg({ ok: true, text: '已是当前数据目录，无需更改。' })
+      return // 同一目录，不必重启
+    }
+    setInfo(await window.seek.getDataInfo())
+    setChangeMsg({
+      ok: true,
+      text: r.moved ? `数据已迁移到新目录：${r.to}` : `数据目录已设置为：${r.to}`
+    })
+    setNeedRestart(true)
+  }
+
   return (
     <div className="tab-pane">
       <div className="tab-h">数据与隐私</div>
@@ -895,33 +919,28 @@ function TabData(): JSX.Element {
           <button className="key-eye" onClick={() => void window.seek.openDataDir()}>
             打开
           </button>
+          <button className="key-eye" onClick={() => void changeDir()} disabled={changing || needRestart}>
+            {changing ? '迁移中…' : '更改'}
+          </button>
         </div>
-        <div className="tip">settings.json（配置）· apikey.bin（加密密钥）· sessions.json（历史会话）· skills/ · mcp.json</div>
+        <div className="tip">
+          settings.json（配置）· apikey.bin（加密密钥）· sessions.json（历史会话）· skills/ · mcp.json
+          <br />
+          更改目录会把上述数据安全复制到新位置（旧目录保留作备份），完成后需重启应用生效。
+        </div>
       </div>
 
-      {confirm ? (
+      {changeMsg && <div className={'test-result ' + (changeMsg.ok ? 'ok' : 'bad')}>{changeMsg.text}</div>}
+
+      {needRestart && (
         <div className="data-confirm">
-          <span>确定清除全部本地数据（配置 / 密钥 / 全部会话）？此操作不可恢复。</span>
+          <span>数据目录已更改，重启应用后生效。</span>
           <div className="cc-acts">
-            <button
-              className="btn danger"
-              onClick={async () => {
-                await clearAllData()
-                setConfirm(false)
-                setInfo(await window.seek.getDataInfo())
-              }}
-            >
-              确认清除
-            </button>
-            <button className="btn ghost" onClick={() => setConfirm(false)}>
-              取消
+            <button className="btn primary" onClick={() => void window.seek.relaunchApp()}>
+              立即重启
             </button>
           </div>
         </div>
-      ) : (
-        <button className="data-clear" onClick={() => setConfirm(true)}>
-          清除全部本地数据
-        </button>
       )}
     </div>
   )

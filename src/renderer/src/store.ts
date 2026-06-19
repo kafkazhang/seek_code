@@ -13,6 +13,7 @@ import {
   Session,
   StoredTool,
   ThemeId,
+  TimelinePart,
   TodoItem
 } from '@shared/types'
 import { applyTheme } from './themes'
@@ -23,6 +24,22 @@ function uid(): string {
   } catch {
     return 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
   }
+}
+
+// 把一个片段并入助手消息时间线：连续的同类推理/文本合并成一段；工具按 callId 去重（running→done 多次事件只记一次）。
+function pushTimeline(timeline: TimelinePart[] | undefined, part: TimelinePart): TimelinePart[] {
+  const arr = timeline ? [...timeline] : []
+  const last = arr[arr.length - 1]
+  if (part.type === 'reasoning' && last?.type === 'reasoning') {
+    arr[arr.length - 1] = { type: 'reasoning', text: last.text + part.text }
+  } else if (part.type === 'text' && last?.type === 'text') {
+    arr[arr.length - 1] = { type: 'text', text: last.text + part.text }
+  } else if (part.type === 'tool' && arr.some((p) => p.type === 'tool' && p.callId === part.callId)) {
+    return arr // 该工具已在时间线中（后续状态更新走 message.tools）
+  } else {
+    arr.push(part)
+  }
+  return arr
 }
 
 export interface Attachment {
@@ -119,7 +136,6 @@ interface State {
   editMessage: (userId: string, newText: string) => Promise<void>
   regenerateFrom: (userMessageId: string) => Promise<void>
   setSettingsOpen: (v: boolean) => void
-  clearAllData: () => Promise<void>
   saveConfig: (patch: ConfigPatch) => Promise<void>
   send: (text: string, attachments?: Attachment[]) => Promise<void>
   abort: () => void
@@ -344,22 +360,6 @@ export const useStore = create<State>((set, get) => {
     },
     setSettingsOpen: (v) => set({ settingsOpen: v }),
 
-    clearAllData: async () => {
-      await window.seek.clearData()
-      const config = await window.seek.getConfig()
-      applyTheme(config.theme)
-      set({
-        config,
-        sessions: [],
-        activeId: null,
-        approvals: [],
-        running: {},
-        status: '已清除全部本地数据',
-        settingsOpen: !config.hasKey
-      })
-      get().newSession()
-    },
-
     saveConfig: async (patchCfg) => {
       const config = await window.seek.setConfig(patchCfg)
       applyTheme(config.theme)
@@ -403,6 +403,7 @@ export const useStore = create<State>((set, get) => {
         content: '',
         reasoning: '',
         tools: [],
+        timeline: [],
         streaming: true,
         mode: get().reasoning
       }
@@ -448,6 +449,7 @@ export const useStore = create<State>((set, get) => {
         content: '',
         reasoning: '',
         tools: [],
+        timeline: [],
         streaming: true,
         mode: get().reasoning
       }
@@ -609,11 +611,19 @@ export const useStore = create<State>((set, get) => {
           set({ status: e.text })
           break
         case 'delta':
-          patchLastBot(id, (m) => ({ ...m, content: m.content + e.text }))
+          patchLastBot(id, (m) => ({
+            ...m,
+            content: m.content + e.text,
+            timeline: pushTimeline(m.timeline, { type: 'text', text: e.text })
+          }))
           persistSoon()
           break
         case 'reasoning':
-          patchLastBot(id, (m) => ({ ...m, reasoning: m.reasoning + e.text }))
+          // 推理只进时间线（按真实顺序与工具交错）；message.reasoning 仅保留给旧消息回退渲染
+          patchLastBot(id, (m) => ({
+            ...m,
+            timeline: pushTimeline(m.timeline, { type: 'reasoning', text: e.text })
+          }))
           persistSoon()
           break
         case 'tool':
@@ -630,7 +640,7 @@ export const useStore = create<State>((set, get) => {
             }
             if (i >= 0) tools[i] = item
             else tools.push(item)
-            return { ...m, tools }
+            return { ...m, tools, timeline: pushTimeline(m.timeline, { type: 'tool', callId: e.callId }) }
           })
           // Agent 改动文件后，递增版本号触发文件树/Git 面板自动刷新（子代理可能批量改文件）
           if (

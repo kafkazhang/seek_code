@@ -18,7 +18,7 @@ const execAsync = promisify(exec)
 // 工具层：全部限定在当前项目根目录内执行（防目录穿越）。
 // 读类工具自动放行；写/执行类工具需经权限审批（见 agent.ts）。
 
-const IGNORE = new Set(['node_modules', '.git', 'out', 'dist', '.next', '.cache', 'build'])
+const IGNORE = new Set(['node_modules', '.git', 'out', 'dist', '.next', '.cache', 'build', 'target'])
 const MAX_READ = 200_000 // 单文件读取上限（字符）
 const MAX_READ_LINES = 1500 // 无行号区间时单次最多返回的行数（引导分段读）
 const MAX_GREP_MATCHES = 80

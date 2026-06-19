@@ -620,16 +620,43 @@ function Message({ m }: { m: ChatMessage }): JSX.Element {
             </>
           )}
         </div>
-        {m.reasoning && <div className="reasoning-block">{m.reasoning}</div>}
-        {m.tools.map((t) => (
-          <ToolCall key={t.callId} t={t} />
-        ))}
-        {m.content &&
-          (m.streaming ? (
-            <div className="text">{renderText(m.content)}</div>
-          ) : (
-            <MarkdownView source={m.content} className="chat-md md-body" />
-          ))}
+        {m.timeline && m.timeline.length > 0 ? (
+          // 新版：推理 / 文本 / 工具按真实发生顺序交错渲染（边思考边行动）
+          m.timeline.map((part, i) => {
+            if (part.type === 'reasoning')
+              return part.text ? (
+                <div key={i} className="reasoning-block">
+                  {part.text}
+                </div>
+              ) : null
+            if (part.type === 'tool') {
+              const tool = m.tools.find((t) => t.callId === part.callId)
+              return tool ? <ToolCall key={part.callId} t={tool} /> : null
+            }
+            if (!part.text) return null
+            return m.streaming ? (
+              <div key={i} className="text">
+                {renderText(part.text)}
+              </div>
+            ) : (
+              <MarkdownView key={i} source={part.text} className="chat-md md-body" />
+            )
+          })
+        ) : (
+          // 回退：旧消息无时间线时按 推理 → 工具 → 文本 分段渲染
+          <>
+            {m.reasoning && <div className="reasoning-block">{m.reasoning}</div>}
+            {m.tools.map((t) => (
+              <ToolCall key={t.callId} t={t} />
+            ))}
+            {m.content &&
+              (m.streaming ? (
+                <div className="text">{renderText(m.content)}</div>
+              ) : (
+                <MarkdownView source={m.content} className="chat-md md-body" />
+              ))}
+          </>
+        )}
         {m.error && (
           <div className="err-card">
             <div className="ec-title">⚠ {friendlyError(m.error)}</div>
@@ -646,7 +673,7 @@ function Message({ m }: { m: ChatMessage }): JSX.Element {
             </div>
           </div>
         )}
-        {m.streaming && !m.content && m.tools.length === 0 && (
+        {m.streaming && !m.content && m.tools.length === 0 && !(m.timeline && m.timeline.length > 0) && (
           <div className="typing">
             <i />
             <i />

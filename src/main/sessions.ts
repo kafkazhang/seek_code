@@ -1,13 +1,13 @@
-import { app } from 'electron'
-import { existsSync, readFileSync, writeFileSync, renameSync, rmSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { PersistedState } from '@shared/types'
+import { dataRoot } from './dataroot'
 
-// 会话与活动会话持久化：纯本地，存于 userData/sessions.json。
+// 会话与活动会话持久化：纯本地，存于 <dataRoot>/sessions.json。
 // 渲染层为唯一数据源，变更后整体回写；主进程只负责读写文件。
 
 export function sessionsPath(): string {
-  return join(app.getPath('userData'), 'sessions.json')
+  return join(dataRoot(), 'sessions.json')
 }
 
 /** 原子写：先写临时文件再重命名，避免写入中断导致文件损坏 */
@@ -46,13 +46,5 @@ export function saveSessions(data: PersistedState): void {
     atomicWrite(sessionsPath(), JSON.stringify({ activeId: data.activeId ?? null, sessions }, null, 2))
   } catch {
     /* 忽略写入失败 */
-  }
-}
-
-export function clearSessions(): void {
-  try {
-    rmSync(sessionsPath(), { force: true })
-  } catch {
-    /* ignore */
   }
 }

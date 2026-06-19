@@ -1,14 +1,14 @@
 import { spawn, ChildProcess } from 'node:child_process'
-import { app } from 'electron'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { McpStatus } from '@shared/types'
 import { guardedFetch, registerTrustedHost } from './egress'
+import { dataRoot } from './dataroot'
 
 // MCP 客户端，支持两种传输：
 //   - stdio：本地子进程，换行分隔 JSON-RPC（{ "command": "...", "args": [...] }）
 //   - http ：远程服务器，Streamable HTTP / JSON-RPC（{ "url": "https://...", "headers": {...} }）
-// 配置：优先 <root>/.seek/mcp.json，否则全局 userData/mcp.json
+// 配置：优先 <root>/.seek/mcp.json，否则全局 <dataRoot>/mcp.json
 //   { "servers": { "<name>": { ... } } }
 
 interface McpServerCfg {
@@ -44,7 +44,7 @@ const conns = new Map<string, McpConn>()
 const route = new Map<string, { server: string; tool: string }>()
 
 function globalConfigPath(): string {
-  return join(app.getPath('userData'), 'mcp.json')
+  return join(dataRoot(), 'mcp.json')
 }
 function configPath(root: string | null): string | null {
   if (root) {

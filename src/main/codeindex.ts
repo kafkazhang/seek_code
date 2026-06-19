@@ -1,7 +1,7 @@
-import { app } from 'electron'
 import { promises as fs, watch, FSWatcher, existsSync } from 'node:fs'
 import { join, relative, extname } from 'node:path'
 import { scanFile, SymbolHit } from './symbols'
+import { dataRoot } from './dataroot'
 
 // 纯本地代码库索引：
 //  - 符号大纲（AST-lite，正则提取 function/class/type 等）→ 注入"代码地图"
@@ -14,7 +14,7 @@ import { scanFile, SymbolHit } from './symbols'
 //  - 写文件 / 文件监听到变化时，只增量更新对应单个文件条目，不再整库失效。
 //  - 命中行所需的文件正文（lines）按需懒加载，避免把整个项目源码复制进 userData。
 
-const IGNORE = new Set(['node_modules', '.git', 'out', 'dist', '.next', '.cache', 'build', '.turbo', 'coverage'])
+const IGNORE = new Set(['node_modules', '.git', 'out', 'dist', '.next', '.cache', 'build', 'target', '.turbo', 'coverage'])
 const CODE_EXT = new Set([
   'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'go', 'rs', 'java', 'kt', 'c', 'h', 'cpp', 'hpp',
   'cc', 'cs', 'rb', 'php', 'swift', 'vue', 'svelte', 'scala', 'sh', 'sql', 'json', 'yaml', 'yml',
@@ -56,7 +56,7 @@ const persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 // ── 持久化 ───────────────────────────────────────────
 export function indexDir(): string {
-  return join(app.getPath('userData'), 'index')
+  return join(dataRoot(), 'index')
 }
 export function hashRoot(root: string): string {
   let h = 5381

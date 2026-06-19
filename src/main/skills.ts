@@ -1,20 +1,20 @@
-import { app } from 'electron'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { SkillMeta, DiscoveredSkill } from '@shared/types'
 import { guardedFetch } from './egress'
+import { dataRoot } from './dataroot'
 
 // 技能 = 目录（与 Claude Code / Kiro 等一致）：
 //   <skills>/<name>/SKILL.md  + 可选脚本/资源文件
 //   <skills>/<name>/.seek-source  记录安装来源（用于「更新」）
 // 兼容旧版扁平 <skills>/<name>.md。
-//   - 全局：userData/skills/
+//   - 全局：<dataRoot>/skills/
 //   - 项目：<root>/.seek/skills/
 
 const MAX = 16_000
 
 function globalDir(): string {
-  return join(app.getPath('userData'), 'skills')
+  return join(dataRoot(), 'skills')
 }
 function projectDir(root: string): string {
   return join(root, '.seek', 'skills')

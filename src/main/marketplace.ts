@@ -1,10 +1,10 @@
-import { app } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CatalogEntry } from '@shared/types'
 import { addMcpServer } from './mcp'
 import { saveSkill, listSkills, installSkillFromUrl } from './skills'
 import { guardedFetch } from './egress'
+import { dataRoot } from './dataroot'
 
 // 默认市场目录（内置、可离线浏览）。搜索由渲染层在返回结果上过滤。
 // MCP 一键写入 mcp.json 并连接；技能一键安装（内置内容直接落地 / 云端 URL 拉取）。
@@ -292,7 +292,7 @@ export async function marketSearch(kind: 'mcp' | 'skill', q: string, root: strin
 
 function mcpInstalledKeys(): Set<string> {
   try {
-    const p = join(app.getPath('userData'), 'mcp.json')
+    const p = join(dataRoot(), 'mcp.json')
     if (!existsSync(p)) return new Set()
     const obj = JSON.parse(readFileSync(p, 'utf-8'))
     return new Set(Object.keys(obj.servers ?? obj.mcpServers ?? {}))

@@ -9,6 +9,7 @@ import {
   CdResult,
   ConfigPatch,
   DataInfo,
+  DataDirChangeResult,
   FileNode,
   CatalogEntry,
   DiscoveredSkill,
@@ -43,9 +44,11 @@ const api = {
   loadSessions: (): Promise<PersistedState> => ipcRenderer.invoke(IPC.sessionsLoad),
   saveSessions: (data: PersistedState): Promise<boolean> => ipcRenderer.invoke(IPC.sessionsSave, data),
 
-  // 本地数据信息与清除
+  // 本地数据信息（只读）+ 更改数据目录（迁移）+ 重启
   getDataInfo: (): Promise<DataInfo> => ipcRenderer.invoke(IPC.dataInfo),
-  clearData: (): Promise<boolean> => ipcRenderer.invoke(IPC.dataClear),
+  changeDataDir: (target?: string): Promise<DataDirChangeResult> =>
+    ipcRenderer.invoke(IPC.dataChangeDir, target ?? null),
+  relaunchApp: (): Promise<boolean> => ipcRenderer.invoke(IPC.appRelaunch),
 
   // 文件列表与预览
   getTree: (root: string, refresh = false): Promise<FileNode[]> =>

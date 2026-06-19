@@ -1,7 +1,8 @@
-import { app, safeStorage } from 'electron'
+import { safeStorage } from 'electron'
 import { existsSync, readFileSync, writeFileSync, renameSync, rmSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { AppConfig, ConfigPatch, DEFAULT_CONFIG } from '@shared/types'
+import { dataRoot } from './dataroot'
 
 /** 原子写：临时文件 + 重命名，防止写入中断损坏配置 */
 function atomicWrite(p: string, content: string | Buffer): void {
@@ -22,16 +23,16 @@ type PersistShape = Omit<AppConfig, 'hasKey' | 'hasEmbedKey'>
 let cache: AppConfig | null = null
 
 export function settingsPath(): string {
-  return join(app.getPath('userData'), 'settings.json')
+  return join(dataRoot(), 'settings.json')
 }
 export function keyPath(): string {
-  return join(app.getPath('userData'), 'apikey.bin')
+  return join(dataRoot(), 'apikey.bin')
 }
 export function embedKeyPath(): string {
-  return join(app.getPath('userData'), 'embedkey.bin')
+  return join(dataRoot(), 'embedkey.bin')
 }
 export function dataDir(): string {
-  return app.getPath('userData')
+  return dataRoot()
 }
 
 function loadPersisted(): PersistShape {
@@ -102,26 +103,6 @@ export function setConfig(patch: ConfigPatch): AppConfig {
   atomicWrite(settingsPath(), JSON.stringify(stripHasKey(next), null, 2))
   cache = { ...next, hasKey: hasApiKey(), hasEmbedKey: hasEmbedApiKey() }
   return cache
-}
-
-/** 清除全部本地数据：配置 + 密钥（会话由 sessions 模块清除） */
-export function clearAll(): void {
-  cache = null
-  try {
-    rmSync(settingsPath(), { force: true })
-  } catch {
-    /* ignore */
-  }
-  try {
-    rmSync(keyPath(), { force: true })
-  } catch {
-    /* ignore */
-  }
-  try {
-    rmSync(embedKeyPath(), { force: true })
-  } catch {
-    /* ignore */
-  }
 }
 
 // ── API Key（加密落盘）──────────────────────────────

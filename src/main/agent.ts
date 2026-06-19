@@ -369,10 +369,13 @@ export async function runAgent(
           (t.name === 'run_command' || t.name === 'run_background') && isDangerousCommand(args.command ?? '')
         // MCP 外部工具：在询问/接受编辑模式下需审批（可能有外部副作用）
         const mcpNeedsApproval = isMcpTool(t.name) && (perm === 'ask' || perm === 'acceptEdits')
-        // web_fetch 突破默认出口白名单：任何模式（含全自动）都需审批；同会话同 host 批准过则放行
+        // web_fetch 突破默认出口白名单：ask/acceptEdits/plan 下需审批（同会话同 host 批准过则放行）；
+        // 全自动模式视为用户已授权联网，直接放行（fetchWeb 内部仍会登记该 host 为信任出口）。
         const fetchHost = t.name === 'web_fetch' ? hostOf(args.url) : null
         const fetchNeedsApproval =
-          t.name === 'web_fetch' && (!fetchHost || !approvedFetchHosts.get(sessionId)?.has(fetchHost))
+          t.name === 'web_fetch' &&
+          perm !== 'auto' &&
+          (!fetchHost || !approvedFetchHosts.get(sessionId)?.has(fetchHost))
         if (needsApproval(perm, t.name) || dangerousCmd || mcpNeedsApproval || fetchNeedsApproval) {
           const sum = dangerousCmd ? '⚠ 危险命令 · ' + summarize(t.name, args) : summarize(t.name, args)
           const ok = await approve(sessionId, t.name, sum, editPreview)

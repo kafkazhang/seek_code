@@ -1,11 +1,12 @@
-import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
+import { app, ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { promises as fs } from 'node:fs'
 import { basename, join, resolve, relative, isAbsolute } from 'node:path'
 import { IPC } from '@shared/ipc'
-import { getConfig, setConfig, clearAll, settingsPath, dataDir, hasApiKey } from './config'
+import { getConfig, setConfig, settingsPath, dataDir, hasApiKey } from './config'
+import { changeDataRoot } from './dataroot'
 import { getClient, fim, getBalance, embedBatch } from './gateway'
 import { runAgent, abortSession, resetSession, ApprovalFn } from './agent'
-import { loadSessions, saveSessions, clearSessions, sessionsPath } from './sessions'
+import { loadSessions, saveSessions, sessionsPath } from './sessions'
 import { termExec, termKill, termInput, resolveCd } from './terminal'
 import { readMemory, addMemory } from './memory'
 import { buildIndex, invalidate, grepContent, watchProject } from './codeindex'
@@ -44,7 +45,9 @@ import {
 // 每个会话绑定一个 projectRoot；发送时按需解析/重建。
 const projectCache = new Map<string, ProjectInfo>()
 const pendingApprovals = new Map<string, (ok: boolean) => void>()
-const IGNORE = new Set(['node_modules', '.git', 'out', 'dist', '.next', '.cache', 'build'])
+// 构建产物/依赖目录：不进文件树（含 @ 文件选择器与左侧文件面板）。
+// target=Maven/Gradle/Rust 产物（含 .class），与 out/dist/build 同类。
+const IGNORE = new Set(['node_modules', '.git', 'out', 'dist', '.next', '.cache', 'build', 'target'])
 
 export function registerIpc(getWindow: () => BrowserWindow | null): void {
   const emit = (e: AgentEvent): void => {
@@ -94,7 +97,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     return true
   })
 
-  // 本地数据信息与清除
+  // 本地数据信息（只读展示；不提供清除能力，避免误删用户数据）
   ipcMain.handle(
     IPC.dataInfo,
     (): DataInfo => ({
@@ -105,10 +108,27 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
       sessionCount: loadSessions().sessions.length
     })
   )
-  ipcMain.handle(IPC.dataClear, () => {
-    clearAll()
-    clearSessions()
-    projectCache.clear()
+
+  // 更改数据目录：选择新目录 → 复制并校验旧数据 → 切换指针。成功后需重启生效。
+  ipcMain.handle(IPC.dataChangeDir, async (_e, target?: string | null) => {
+    let dir = target ?? null
+    if (!dir) {
+      const win = getWindow()
+      if (!win) return { ok: false, error: '窗口未就绪' }
+      const res = await dialog.showOpenDialog(win, {
+        title: '选择新的数据目录',
+        properties: ['openDirectory', 'createDirectory']
+      })
+      if (res.canceled || !res.filePaths[0]) return { ok: false, error: 'cancelled' }
+      dir = res.filePaths[0]
+    }
+    return changeDataRoot(dir)
+  })
+
+  // 重启应用（更改数据目录后调用，使数据库/缓存/索引等绑定到新路径）
+  ipcMain.handle(IPC.appRelaunch, () => {
+    app.relaunch()
+    app.exit(0)
     return true
   })
 
@@ -458,7 +478,8 @@ async function buildProject(root: string): Promise<ProjectInfo> {
 }
 
 async function buildTree(absDir: string, rel: string, depth: number): Promise<FileNode[]> {
-  if (depth > 6) return []
+  // 限制递归深度防失控；放宽到 12 以容纳 Java 等深包路径（src/main/java/com/<org>/<module>/…）。
+  if (depth > 12) return []
   let entries: Array<{ name: string; isDirectory: () => boolean }>
   try {
     entries = (await fs.readdir(absDir, { withFileTypes: true })) as any

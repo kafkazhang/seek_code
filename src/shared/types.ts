@@ -120,12 +120,24 @@ export interface SubagentUpdate {
   result?: string
 }
 
+/**
+ * 助手消息时间线的一个片段：推理 / 文本 / 工具调用，按发生顺序排列。
+ * 用于「边思考边行动」的交错展示——把同一回合里跨多轮产生的推理与工具调用按真实先后顺序穿插渲染，
+ * 而不是把推理全堆在上、工具全堆在下。tool 片段只存 callId，具体数据仍取自 message.tools。
+ */
+export type TimelinePart =
+  | { type: 'reasoning'; text: string }
+  | { type: 'text'; text: string }
+  | { type: 'tool'; callId: string }
+
 export interface ChatMessage {
   id: string
   role: ChatRole
   content: string
   reasoning: string
   tools: StoredTool[]
+  /** 推理/文本/工具按时间顺序交错的时间线（新版渲染）。旧消息无此字段时回退到 reasoning/tools/content 分段渲染。 */
+  timeline?: TimelinePart[]
   streaming?: boolean
   mode?: ReasoningMode
   /** 系统提示行（斜杠命令反馈等），居中淡色渲染 */
@@ -234,13 +246,23 @@ export interface BalanceResult {
   error?: string
 }
 
-/** 本地数据信息（用于设置页展示与清除） */
+/** 本地数据信息（用于设置页只读展示） */
 export interface DataInfo {
   dir: string
   settingsPath: string
   sessionsPath: string
   hasKey: boolean
   sessionCount: number
+}
+
+/** 更改数据目录的结果（迁移成功后需重启生效） */
+export interface DataDirChangeResult {
+  ok: boolean
+  /** 是否实际搬迁了数据（旧目录原本有数据才为 true） */
+  moved?: boolean
+  from?: string
+  to?: string
+  error?: string
 }
 
 /** 终端流式事件（主 → 渲染） */

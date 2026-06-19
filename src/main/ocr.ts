@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
-import { app } from 'electron'
 import { createWorker, type Worker } from 'tesseract.js'
+import { dataRoot } from './dataroot'
 
 // 本地 OCR：截图文字识别。
 // DeepSeek 的 /chat/completions 不接受图片字段（实测 400 unknown variant `image_url`），
@@ -24,7 +24,7 @@ function getWorker(): Promise<Worker> {
   if (!workerPromise) {
     workerPromise = createWorker(['chi_sim', 'eng'], 1, {
       langPath: tessdataDir(),
-      cachePath: join(app.getPath('userData'), 'ocr-cache'),
+      cachePath: join(dataRoot(), 'ocr-cache'),
       gzip: false, // 内置字库为未压缩 .traineddata
       cacheMethod: 'none', // 直接从 langPath 读取，不额外落盘缓存
       logger: () => {},
