@@ -16,7 +16,7 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#贡献)
 [![GitHub stars](https://img.shields.io/github/stars/kafkazhang/seek_code?style=social)](https://github.com/kafkazhang/seek_code/stargazers)
 
-融合 **Claude Code**（本地结对深度）与 **Codex**（任务委派）思路，基于 **Electron + Node + React/TypeScript** 构建的**桌面客户端** AI 编程工具。
+融合 **Claude Code**（结对编程）与 **Codex**（任务委派）思路，基于 **Electron + Node + React/TypeScript** 构建的**桌面客户端** AI 编程工具。
 Agent **在你本机运行工具循环**，深度适配 **DeepSeek-V4** 的混合推理档位与前缀缓存特性。
 集成 **Agent 工具循环、本地代码索引检索、记忆系统、Skills / MCP 扩展、内置终端与编辑器**——零后端，粘贴一个 API Key 即用。
 
