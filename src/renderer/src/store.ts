@@ -200,6 +200,14 @@ export const useStore = create<State>((set, get) => {
       return { ...s, messages: msgs, updatedAt: Date.now() }
     })
 
+  // 切换会话时若项目根变化，重置随项目走的停靠面板状态（已打开文件标签 / 预览）。
+  // 终端/Git 面板通过 key=root 重挂载、任务面板按项目过滤，分别在组件层处理。
+  const dockResetForRoot = (
+    prevRoot: string | null,
+    nextRoot: string | null
+  ): { previews: PreviewState[]; activePreviewPath: string | null } | Record<string, never> =>
+    prevRoot === nextRoot ? {} : { previews: [], activePreviewPath: null }
+
   return {
     config: null,
     sessions: [],
@@ -326,22 +334,27 @@ export const useStore = create<State>((set, get) => {
     },
 
     newSession: () => {
+      const prevRoot = get().active()?.projectRoot ?? null
       const s = blankSession(get().config?.permissionMode ?? 'ask')
-      set((st) => ({ sessions: [s, ...st.sessions], activeId: s.id, status: '' }))
+      set((st) => ({ sessions: [s, ...st.sessions], activeId: s.id, status: '', ...dockResetForRoot(prevRoot, null) }))
       persist()
     },
 
     selectSession: (id) => {
-      set({ activeId: id })
+      const prevRoot = get().active()?.projectRoot ?? null
+      const nextRoot = get().sessions.find((s) => s.id === id)?.projectRoot ?? null
+      set({ activeId: id, ...dockResetForRoot(prevRoot, nextRoot) })
       persist() // 记住上次活动会话
     },
 
     deleteSession: (id) => {
       void window.seek.resetSession(id)
+      const prevRoot = get().active()?.projectRoot ?? null
       set((st) => {
         const sessions = st.sessions.filter((s) => s.id !== id)
         const activeId = st.activeId === id ? (sessions[0]?.id ?? null) : st.activeId
-        return { sessions, activeId }
+        const nextRoot = sessions.find((s) => s.id === activeId)?.projectRoot ?? null
+        return { sessions, activeId, ...dockResetForRoot(prevRoot, nextRoot) }
       })
       if (get().sessions.length === 0) get().newSession()
       persist()

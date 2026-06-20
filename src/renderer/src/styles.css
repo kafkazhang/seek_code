@@ -1095,6 +1095,128 @@ button {
   border-color: rgba(var(--danger-rgb), 0.3);
 }
 
+/* ── 终端固定深色配色：与主题解耦，始终「黑底 + 浅色字」，保证内容清晰可读 ── */
+.term-tabs {
+  --t-bg: #0b0f17;
+  --t-surface: #11161f;
+  --t-fg: #d3d8e0;
+  --t-dim: #8b97a7;
+  --t-cmd: #7ee0ff;
+  --t-prompt: #7ee787;
+  --t-err: #ff7b72;
+  --t-amber: #f0b86c;
+  --t-line: rgba(255, 255, 255, 0.09);
+}
+.term-tabs .term-tabbar {
+  background: var(--t-bg);
+  border-bottom-color: var(--t-line);
+}
+.term-tabs .tt-tab {
+  background: var(--t-surface);
+  border-color: var(--t-line);
+  color: var(--t-dim);
+}
+.term-tabs .tt-tab.on {
+  background: var(--t-bg);
+  color: var(--t-fg);
+  border-color: var(--t-line);
+}
+.term-tabs .tt-add {
+  color: var(--t-dim);
+}
+.term-tabs .term-panel {
+  background: var(--t-bg);
+}
+.term-tabs .term-panel .panel-bar {
+  background: var(--t-surface);
+  border-bottom-color: var(--t-line);
+}
+.term-tabs .term-panel .pb-path {
+  color: var(--t-fg);
+}
+.term-tabs .term-panel .pb-btn {
+  background: var(--t-surface);
+  border-color: var(--t-line);
+  color: var(--t-dim);
+  /* 「清空」为双字，需横排：取消图标按钮的固定 24px 宽度 */
+  width: auto;
+  white-space: nowrap;
+  padding: 0 9px;
+  font-size: 12px;
+}
+.term-tabs .term-panel .pb-btn:hover {
+  border-color: var(--t-dim);
+  color: var(--t-fg);
+}
+.term-tabs .term-envtag {
+  color: var(--t-amber);
+  border-color: rgba(240, 184, 108, 0.32);
+}
+.term-tabs .term-body {
+  color: var(--t-fg);
+}
+/* 终端输出段是纯文本：清掉与「推理档位胶囊」同名 .seg 基类带来的底色/边框/圆角 */
+.term-tabs .term-body .seg {
+  display: inline;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+.term-tabs .seg.out,
+.term-tabs .aout {
+  color: var(--t-fg);
+}
+.term-tabs .seg.err,
+.term-tabs .aerr {
+  color: var(--t-err);
+}
+.term-tabs .seg.cmd {
+  color: var(--t-cmd);
+}
+.term-tabs .seg.sys {
+  color: var(--t-dim);
+}
+/* 行内输入：提示符 + 直接输入框，位于正文末尾，像系统终端一样原地输入 */
+.term-promptline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--mono);
+  padding: 2px 0 6px;
+}
+.term-promptline .tp-prompt {
+  color: var(--t-prompt);
+  font-size: 12.5px;
+}
+.term-promptline .tp-prompt.stdin {
+  color: var(--t-amber);
+}
+.term-inline-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--t-fg);
+  caret-color: var(--t-prompt);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  user-select: text;
+}
+.term-inline-input::placeholder {
+  color: var(--t-dim);
+}
+.term-stop {
+  border: 1px solid rgba(255, 123, 114, 0.4);
+  background: transparent;
+  color: var(--t-err);
+  border-radius: 6px;
+  padding: 2px 9px;
+  font-family: var(--disp);
+  font-size: 11px;
+}
+
 /* background tasks panel */
 .tasks-panel {
   display: flex;
@@ -2189,6 +2311,7 @@ button {
   min-height: 0;
   overflow: hidden;
   background: var(--abyss);
+  position: relative; /* 主题氛围层（.fx）绝对定位于此，仅铺满聊天区，不外溢到工具面板/终端 */
 }
 .chat {
   flex: 1;
@@ -4122,20 +4245,22 @@ button {
   --petal: linear-gradient(135deg, #ffe0cf 0%, #ffb38a 100%);
 }
 
-/* ── 主题氛围动画层（无图片资源；仅对应主题挂载）── */
+/* ── 主题氛围动画层（无图片资源；仅对应主题挂载，绝对定位铺满聊天区 .center）── */
 .fx {
-  position: fixed;
+  position: absolute;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
 }
-/* 粒子流：Canvas 星座网络。作前景叠层（在内容之上、设置弹层 z-index 60 之下），
-   screen 混合 + 低不透明度——发光线条叠加在 UI 上清晰可见，又不遮挡文字。 */
+/* 粒子流：Canvas 星座网络。叠在聊天内容之上，screen 混合 + 低不透明度——
+   发光线条清晰可见又不遮挡文字；不覆盖右侧工具面板/终端。 */
 .fx-canvas {
   z-index: 6;
   opacity: 0.62;
   mix-blend-mode: screen;
   display: block;
+  width: 100%;
+  height: 100%;
 }
 /* 花瓣飘落（樱花/薰衣草/蜜桃 共用）：自顶向下，作前景叠层（在内容之上、设置弹层之下 z-index 60）。
    花瓣颜色取主题变量 --petal。 */
@@ -4167,9 +4292,9 @@ button {
     opacity: 0.6;
   }
 }
-/* 水墨：柔和墨晕缓缓游移、呼吸缩放，作背景氛围（在内容之后），如墨入清水缓缓晕开 */
+/* 水墨：柔和墨晕缓缓游移、呼吸缩放，作背景氛围（在聊天内容之后），如墨入清水缓缓晕开 */
 .fx-ink {
-  z-index: 0;
+  z-index: -1;
 }
 .fx-ink i {
   position: absolute;

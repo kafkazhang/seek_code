@@ -56,16 +56,18 @@ export default function ToolDock(): JSX.Element {
       <div className="dock-body">
         {root ? (
           <>
+            {/* 三个面板均以 key=root 绑定项目：切换到不同项目时整体重挂载，
+                不残留上一个项目的已打开文件草稿 / 终端输出 / Git 选中态。 */}
             <div className="dock-pane" style={{ display: isExplorer ? 'flex' : 'none' }}>
-              <ExplorerPane root={root} />
+              <ExplorerPane key={root} root={root} />
             </div>
-            {/* 终端常驻挂载（仅隐藏），切换标签不丢失会话 */}
+            {/* 终端常驻挂载（仅隐藏），同项目切换标签不丢失会话；换项目则重置 */}
             <div className="dock-pane" style={{ display: dockTab === 'terminal' ? 'flex' : 'none' }}>
-              <TerminalTabs root={root} />
+              <TerminalTabs key={root} root={root} />
             </div>
             {dockTab === 'git' && (
               <div className="dock-pane" style={{ display: 'flex' }}>
-                <GitPanel root={root} />
+                <GitPanel key={root} root={root} />
               </div>
             )}
           </>
@@ -293,6 +295,8 @@ function TasksPanel(): JSX.Element {
   const cur = useStore((s) => s.active())
   const hasProject = !!cur?.projectRoot
   const root = cur?.projectRoot ?? null
+  // 只显示当前会话项目下的后台任务，避免串项目（后台任务本身仍按项目各自运行）
+  const shownTasks = tasks.filter((t) => t.projectRoot === root)
   // 任务自带推理档位（与对话区相互独立：后台任务一次性运行，需单独定深浅）
   const [depth, setDepth] = useState<ReasoningMode>('balanced')
 
@@ -315,14 +319,14 @@ function TasksPanel(): JSX.Element {
   return (
     <div className="tasks-panel">
       <div className="task-list scroll">
-        {tasks.length === 0 ? (
+        {shownTasks.length === 0 ? (
           <div className="dock-empty">
             暂无后台任务。
             <br />
             用下方输入或 <code>/bg &lt;任务&gt;</code> 委派。
           </div>
         ) : (
-          tasks.map((t) => (
+          shownTasks.map((t) => (
             <div key={t.id} className={'task-card ' + t.status}>
               <div className="tc-h">
                 <span className={'tc-dot ' + t.status} />
@@ -603,7 +607,7 @@ function TerminalPanel({ root }: { root: string }): JSX.Element {
         </button>
       </div>
       <div className="term-body scroll" ref={bodyRef} onClick={() => inputRef.current?.focus()}>
-        <pre>
+        <pre className="term-out">
           {segs.map((s, i) =>
             s.kind === 'out' || s.kind === 'err' ? (
               ansiToSpans(s.text).map((sp, j) => (
@@ -617,30 +621,28 @@ function TerminalPanel({ root }: { root: string }): JSX.Element {
               </span>
             )
           )}
-          {running && <span className="term-cursor">▍</span>}
         </pre>
-      </div>
-      <div className="term-input">
-        <span className={'tp-prompt' + (running ? ' stdin' : '')}>{running ? 'stdin »' : base(cwd) + ' $'}</span>
-        <input
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKey}
-          placeholder={running ? '回车发送到运行中的程序 · Ctrl+C 中断' : '输入命令，回车执行（↑↓ 历史）'}
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-        />
-        {running ? (
-          <button className="tp-btn stop" onClick={stop} title="Ctrl+C 中断">
-            停止
-          </button>
-        ) : (
-          <button className="tp-btn" onClick={() => void run()} title="执行">
-            ▶
-          </button>
-        )}
+        {/* 行内输入：直接在正文里、提示符之后输入命令（贴近系统终端体验，回车执行，Ctrl+C 中断） */}
+        <div className="term-promptline">
+          <span className={'tp-prompt' + (running ? ' stdin' : '')}>{running ? 'stdin »' : base(cwd) + ' $'}</span>
+          <input
+            ref={inputRef}
+            className="term-inline-input"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKey}
+            placeholder={running ? '回车发送到运行中的程序 · Ctrl+C 中断' : '输入命令，回车执行（↑↓ 历史）'}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            autoFocus
+          />
+          {running && (
+            <button className="term-stop" onClick={stop} title="Ctrl+C 中断">
+              停止
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

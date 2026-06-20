@@ -309,6 +309,8 @@ export interface BgTask {
   status: 'queued' | 'running' | 'done' | 'error' | 'cancelled'
   createdAt: number
   projectName: string | null
+  /** 所属项目根路径（用于任务面板按当前会话项目过滤；旧持久化任务可能缺省） */
+  projectRoot?: string | null
   lastAction: string
   result: string
   toolCount: number

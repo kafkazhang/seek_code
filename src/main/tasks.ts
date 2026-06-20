@@ -87,6 +87,7 @@ export function startTask(goal: string, project: ProjectInfo, emit: Emit, opts: 
     status: queued ? 'queued' : 'running',
     createdAt: Date.now(),
     projectName: project.name,
+    projectRoot: project.root,
     lastAction: queued ? '排队中…' : '启动…',
     result: '',
     toolCount: 0

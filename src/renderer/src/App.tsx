@@ -39,8 +39,8 @@ function BrandMark({
   )
 }
 
-// 粒子流主题：Canvas 星座网络——粒子漂移、临近自动连线、跟随光标高亮，按窗口面积自适应密度。
-// 仅在该主题挂载；页面隐藏时暂停 rAF，devicePixelRatio 上限 2，additive(lighter) 合成产生发光感。
+// 粒子流主题：Canvas 星座网络——粒子漂移、临近自动连线、跟随光标高亮，按容器面积自适应密度。
+// 仅在该主题挂载、且只铺满聊天区（.center），不覆盖工具面板/终端；页面隐藏时暂停 rAF。
 function ParticleCanvas(): JSX.Element {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
@@ -60,14 +60,14 @@ function ParticleCanvas(): JSX.Element {
     let raf = 0
 
     const build = (): void => {
-      w = window.innerWidth
-      h = window.innerHeight
+      // 铺满所属容器（.center），而非整个窗口
+      w = canvas.clientWidth
+      h = canvas.clientHeight
+      if (!w || !h) return
       canvas.width = Math.floor(w * dpr)
       canvas.height = Math.floor(h * dpr)
-      canvas.style.width = w + 'px'
-      canvas.style.height = h + 'px'
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      const n = Math.min(130, Math.max(54, Math.round((w * h) / 13000)))
+      const n = Math.min(120, Math.max(40, Math.round((w * h) / 12000)))
       pts = Array.from({ length: n }, () => ({
         x: Math.random() * w,
         y: Math.random() * h,
@@ -130,30 +130,32 @@ function ParticleCanvas(): JSX.Element {
     }
 
     const onMove = (e: MouseEvent): void => {
-      mouse.x = e.clientX
-      mouse.y = e.clientY
+      const r = canvas.getBoundingClientRect()
+      const x = e.clientX - r.left
+      const y = e.clientY - r.top
+      if (x >= 0 && x <= w && y >= 0 && y <= h) {
+        mouse.x = x
+        mouse.y = y
+      } else {
+        mouse.x = -9999
+        mouse.y = -9999
+      }
     }
-    const onLeave = (): void => {
-      mouse.x = -9999
-      mouse.y = -9999
-    }
-    const onResize = (): void => build()
     const onVis = (): void => {
       cancelAnimationFrame(raf)
       if (!document.hidden) raf = requestAnimationFrame(draw)
     }
+    const ro = new ResizeObserver(() => build())
+    ro.observe(canvas)
 
     build()
     raf = requestAnimationFrame(draw)
-    window.addEventListener('resize', onResize)
     window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseout', onLeave)
     document.addEventListener('visibilitychange', onVis)
     return () => {
       cancelAnimationFrame(raf)
-      window.removeEventListener('resize', onResize)
+      ro.disconnect()
       window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseout', onLeave)
       document.removeEventListener('visibilitychange', onVis)
     }
   }, [])
@@ -308,7 +310,6 @@ export default function App(): JSX.Element {
     <>
       <div className="bg bg-glow" />
       <div className="bg bg-grid" />
-      <ThemeFx />
 
       <div className="app">
         {/* title bar */}
@@ -346,6 +347,7 @@ export default function App(): JSX.Element {
         >
           <Sidebar />
           <main className="center">
+            <ThemeFx />
             <ConvHeader />
             <Chat />
             <TodoBar />
