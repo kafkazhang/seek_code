@@ -1,5 +1,10 @@
 appId: com.seekcode.app
 productName: SeekCode
+# 自动更新源：electron-updater 从该 GitHub 仓库的 Release 读取 latest*.yml 检查新版本
+publish:
+  provider: github
+  owner: kafkazhang
+  repo: seek_code
 # CI 多平台产物命名：SeekCode-0.1.0-win-x64.exe / SeekCode-0.1.0-mac-arm64.dmg
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 directories:

@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "electron-updater": "^6.3.9",
     "highlight.js": "^11.10.0",
     "marked": "^12.0.2",
     "monaco-editor": "^0.52.2",
@@ -41,6 +42,7 @@
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.9.0",
     "@fontsource/chakra-petch": "^5.1.0",
     "@fontsource/jetbrains-mono": "^5.1.1",
     "@fontsource/sora": "^5.1.0",
@@ -48,14 +50,13 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "@eslint/js": "^9.9.0",
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
     "eslint": "^9.9.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-react": "^7.35.0",
     "eslint-plugin-react-hooks": "^5.0.0",
-    "electron": "^31.3.0",
-    "electron-builder": "^24.13.3",
-    "electron-vite": "^2.3.0",
     "globals": "^15.9.0",
     "prettier": "^3.3.3",
     "react": "^18.3.1",

@@ -39,6 +39,208 @@ function BrandMark({
   )
 }
 
+// 粒子流主题：Canvas 星座网络——粒子漂移、临近自动连线、跟随光标高亮，按窗口面积自适应密度。
+// 仅在该主题挂载；页面隐藏时暂停 rAF，devicePixelRatio 上限 2，additive(lighter) 合成产生发光感。
+function ParticleCanvas(): JSX.Element {
+  const ref = useRef<HTMLCanvasElement>(null)
+  useEffect(() => {
+    const canvas = ref.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const accent =
+      getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim() || '124, 196, 255'
+    const LINK = 132
+    const MOUSE_LINK = 188
+    let w = 0
+    let h = 0
+    let pts: { x: number; y: number; vx: number; vy: number; r: number }[] = []
+    const mouse = { x: -9999, y: -9999 }
+    let raf = 0
+
+    const build = (): void => {
+      w = window.innerWidth
+      h = window.innerHeight
+      canvas.width = Math.floor(w * dpr)
+      canvas.height = Math.floor(h * dpr)
+      canvas.style.width = w + 'px'
+      canvas.style.height = h + 'px'
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      const n = Math.min(130, Math.max(54, Math.round((w * h) / 13000)))
+      pts = Array.from({ length: n }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() * 2 - 1) * 0.45,
+        vy: (Math.random() * 2 - 1) * 0.45,
+        r: 1 + Math.random() * 1.8
+      }))
+    }
+
+    const draw = (): void => {
+      ctx.clearRect(0, 0, w, h)
+      ctx.globalCompositeOperation = 'lighter'
+      for (const p of pts) {
+        p.x += p.vx
+        p.y += p.vy
+        if (p.x < 0 || p.x > w) p.vx *= -1
+        if (p.y < 0 || p.y > h) p.vy *= -1
+      }
+      ctx.lineWidth = 0.7
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i]
+        for (let j = i + 1; j < pts.length; j++) {
+          const b = pts[j]
+          const dx = a.x - b.x
+          const dy = a.y - b.y
+          const d2 = dx * dx + dy * dy
+          if (d2 < LINK * LINK) {
+            const al = (1 - Math.sqrt(d2) / LINK) * 0.5
+            ctx.strokeStyle = `rgba(${accent}, ${al.toFixed(3)})`
+            ctx.beginPath()
+            ctx.moveTo(a.x, a.y)
+            ctx.lineTo(b.x, b.y)
+            ctx.stroke()
+          }
+        }
+        const mdx = a.x - mouse.x
+        const mdy = a.y - mouse.y
+        const md2 = mdx * mdx + mdy * mdy
+        if (md2 < MOUSE_LINK * MOUSE_LINK) {
+          const al = (1 - Math.sqrt(md2) / MOUSE_LINK) * 0.85
+          ctx.strokeStyle = `rgba(${accent}, ${al.toFixed(3)})`
+          ctx.beginPath()
+          ctx.moveTo(a.x, a.y)
+          ctx.lineTo(mouse.x, mouse.y)
+          ctx.stroke()
+        }
+      }
+      for (const p of pts) {
+        ctx.fillStyle = `rgba(${accent}, 0.1)`
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.r * 3, 0, 6.283)
+        ctx.fill()
+        ctx.fillStyle = `rgba(${accent}, 0.95)`
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.r, 0, 6.283)
+        ctx.fill()
+      }
+      ctx.globalCompositeOperation = 'source-over'
+      raf = requestAnimationFrame(draw)
+    }
+
+    const onMove = (e: MouseEvent): void => {
+      mouse.x = e.clientX
+      mouse.y = e.clientY
+    }
+    const onLeave = (): void => {
+      mouse.x = -9999
+      mouse.y = -9999
+    }
+    const onResize = (): void => build()
+    const onVis = (): void => {
+      cancelAnimationFrame(raf)
+      if (!document.hidden) raf = requestAnimationFrame(draw)
+    }
+
+    build()
+    raf = requestAnimationFrame(draw)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseout', onLeave)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseout', onLeave)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [])
+  return <canvas ref={ref} className="fx fx-canvas" aria-hidden="true" />
+}
+
+// 主题氛围层：粒子流 → Canvas 星座网络；樱花/薰衣草/蜜桃 → 飘落花瓣（颜色随主题 --petal）；
+// 水墨 → 缓缓游移的墨晕。全部纯 CSS/Canvas、无图片资源，仅对应主题挂载。
+const PETAL_THEMES = new Set<string>(['sakura', 'lavender', 'peach'])
+
+function ThemeFx(): JSX.Element | null {
+  const theme = useStore((s) => s.config?.theme)
+  const petals = useMemo(
+    () =>
+      Array.from({ length: 22 }, () => ({
+        left: Math.random() * 100,
+        size: 9 + Math.random() * 14,
+        dur: 8 + Math.random() * 9,
+        delay: -Math.random() * 16,
+        drift: Math.round((Math.random() * 2 - 1) * 140),
+        rot: Math.round(Math.random() * 360)
+      })),
+    []
+  )
+  const inks = useMemo(
+    () =>
+      Array.from({ length: 6 }, () => ({
+        left: Math.random() * 100,
+        top: Math.random() * 100,
+        size: Math.round(180 + Math.random() * 220),
+        dur: 18 + Math.random() * 16,
+        delay: -Math.random() * 20,
+        dx: Math.round((Math.random() * 2 - 1) * 60),
+        dy: Math.round((Math.random() * 2 - 1) * 40)
+      })),
+    []
+  )
+
+  if (theme === 'particle') return <ParticleCanvas />
+  if (theme === 'ink') {
+    return (
+      <div className="fx fx-ink" aria-hidden="true">
+        {inks.map((b, i) => (
+          <i
+            key={i}
+            style={
+              {
+                left: `${b.left}%`,
+                top: `${b.top}%`,
+                width: b.size,
+                height: b.size,
+                animationDuration: `${b.dur}s`,
+                animationDelay: `${b.delay}s`,
+                '--dx': `${b.dx}px`,
+                '--dy': `${b.dy}px`
+              } as CSSProperties
+            }
+          />
+        ))}
+      </div>
+    )
+  }
+  if (theme && PETAL_THEMES.has(theme)) {
+    return (
+      <div className="fx fx-petals" aria-hidden="true">
+        {petals.map((p, i) => (
+          <i
+            key={i}
+            style={
+              {
+                left: `${p.left}%`,
+                width: p.size,
+                height: p.size,
+                animationDuration: `${p.dur}s`,
+                animationDelay: `${p.delay}s`,
+                '--drift': `${p.drift}px`,
+                '--rot': `${p.rot}deg`
+              } as CSSProperties
+            }
+          />
+        ))}
+      </div>
+    )
+  }
+  return null
+}
+
 function renderText(text: string): JSX.Element[] {
   return text.split(/(`[^`]+`)/g).map((p, i) =>
     p.startsWith('`') && p.endsWith('`') && p.length > 1 ? (
@@ -106,19 +308,14 @@ export default function App(): JSX.Element {
     <>
       <div className="bg bg-glow" />
       <div className="bg bg-grid" />
+      <ThemeFx />
 
       <div className="app">
         {/* title bar */}
         <header className="titlebar">
-          <div className="brand">
-            <BrandMark />
-            <div>
-              <b>
-                Seek<span>Code</span>
-              </b>{' '}
-              <small>v{__APP_VERSION__}</small>
-            </div>
-          </div>
+          <button className="new-session tb-new" onClick={() => s.newSession()}>
+            <span className="plus">+</span> 新建会话
+          </button>
 
           <div className="spacer" />
 
@@ -238,14 +435,18 @@ function BalanceItem(): JSX.Element | null {
 
 // ── Sidebar: 会话列表 ─────────────────────────────────
 function Sidebar(): JSX.Element {
-  const { sessions, activeId, newSession, selectSession, deleteSession, running, setSettingsOpen, config } =
+  const { sessions, activeId, selectSession, deleteSession, running, setSettingsOpen, update, installUpdate } =
     useStore()
+  const updateLine =
+    update?.state === 'available'
+      ? '发现新版本，下载中…'
+      : update?.state === 'downloading'
+        ? `下载更新 ${update.percent ?? 0}%`
+        : update?.state === 'downloaded'
+          ? `新版本 v${update.version ?? ''} 待安装`
+          : null
   return (
     <aside className="sidebar">
-      <button className="new-session" onClick={newSession}>
-        <span className="plus">+</span> 新建会话
-      </button>
-
       <div className="side-label">最近会话</div>
       <div className="sess-list scroll">
         {sessions.length === 0 && <div className="empty-side">暂无会话</div>}
@@ -279,13 +480,28 @@ function Sidebar(): JSX.Element {
           <BrandMark className="av-logo" fallback={<span>求</span>} />
         </div>
         <div className="sf-main">
-          <div className="sf-name">SeekCode</div>
-          <div className="sf-sub">{config?.hasKey ? 'DeepSeek-V4 · key ✓' : '点此配置 API Key'}</div>
+          <div className="sf-name">
+            SeekCode <small className="sf-ver">v{__APP_VERSION__}</small>
+          </div>
+          {updateLine && <div className="sf-sub upd">{updateLine}</div>}
         </div>
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.7">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" />
-        </svg>
+        {update?.state === 'downloaded' ? (
+          <button
+            className="sf-update"
+            title={`重启并安装 v${update.version ?? ''}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              void installUpdate()
+            }}
+          >
+            ↑ 更新
+          </button>
+        ) : (
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.7">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" />
+          </svg>
+        )}
       </div>
     </aside>
   )

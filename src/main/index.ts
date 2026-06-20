@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { registerIpc } from './ipc'
 import { installEgressGuard } from './net'
+import { setupAutoUpdate } from './updater'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -58,6 +59,7 @@ app.whenReady().then(() => {
   installEgressGuard() // 网络出口白名单：仅放行 DeepSeek 接口
   registerIpc(() => mainWindow)
   createWindow()
+  setupAutoUpdate(() => mainWindow) // 自动检查更新（打包后生效）
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

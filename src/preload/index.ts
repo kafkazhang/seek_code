@@ -10,6 +10,7 @@ import {
   ConfigPatch,
   DataInfo,
   DataDirChangeResult,
+  UpdateStatus,
   FileNode,
   CatalogEntry,
   DiscoveredSkill,
@@ -49,6 +50,16 @@ const api = {
   changeDataDir: (target?: string): Promise<DataDirChangeResult> =>
     ipcRenderer.invoke(IPC.dataChangeDir, target ?? null),
   relaunchApp: (): Promise<boolean> => ipcRenderer.invoke(IPC.appRelaunch),
+
+  // 自动更新
+  checkUpdate: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC.updateCheck),
+  installUpdate: (): Promise<boolean> => ipcRenderer.invoke(IPC.updateInstall),
+  getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC.updateStatus),
+  onUpdate: (cb: (s: UpdateStatus) => void): (() => void) => {
+    const listener = (_e: unknown, data: UpdateStatus): void => cb(data)
+    ipcRenderer.on(IPC.updateEvent, listener)
+    return () => ipcRenderer.removeListener(IPC.updateEvent, listener)
+  },
 
   // 文件列表与预览
   getTree: (root: string, refresh = false): Promise<FileNode[]> =>

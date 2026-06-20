@@ -41,7 +41,17 @@ export interface AppConfig {
 }
 
 /** 界面主题标识（对应 styles.css 中 [data-theme] 配色） */
-export type ThemeId = 'abyss' | 'midnight' | 'ember' | 'forest' | 'daylight'
+export type ThemeId =
+  | 'abyss'
+  | 'midnight'
+  | 'ember'
+  | 'forest'
+  | 'daylight'
+  | 'particle'
+  | 'sakura'
+  | 'ink'
+  | 'lavender'
+  | 'peach'
 
 export interface Pricing {
   cacheHitInput: number
@@ -253,6 +263,21 @@ export interface DataInfo {
   sessionsPath: string
   hasKey: boolean
   sessionCount: number
+}
+
+/** 自动更新状态（主 → 渲染推送，设置页/底栏展示） */
+export interface UpdateStatus {
+  /**
+   * idle 初始；checking 检查中；available 发现新版（开始下载）；downloading 下载中；
+   * downloaded 已下载待安装；up-to-date 已是最新；error 出错；dev 开发环境（未打包，不检查）
+   */
+  state: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error' | 'dev'
+  /** 新版本号（available/downloaded 时） */
+  version?: string
+  /** 下载进度百分比 0..100（downloading 时） */
+  percent?: number
+  /** 错误信息（error 时） */
+  error?: string
 }
 
 /** 更改数据目录的结果（迁移成功后需重启生效） */

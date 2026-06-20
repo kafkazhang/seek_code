@@ -14,7 +14,8 @@ import {
   StoredTool,
   ThemeId,
   TimelinePart,
-  TodoItem
+  TodoItem,
+  UpdateStatus
 } from '@shared/types'
 import { applyTheme } from './themes'
 
@@ -112,6 +113,10 @@ interface State {
   /** 各会话的任务清单（todo_write 工具维护，不持久化） */
   todos: Record<string, TodoItem[]>
   clearTodos: (sessionId: string) => void
+  /** 自动更新状态（底栏/设置页展示） */
+  update: UpdateStatus | null
+  checkUpdate: () => Promise<void>
+  installUpdate: () => Promise<void>
 
   init: () => Promise<void>
   loadBalance: () => Promise<void>
@@ -146,6 +151,7 @@ interface State {
 
 let cleanup: (() => void) | null = null
 let cleanupTask: (() => void) | null = null
+let cleanupUpdate: (() => void) | null = null
 
 function blankSession(defaultMode: PermissionMode): Session {
   const now = Date.now()
@@ -218,6 +224,15 @@ export const useStore = create<State>((set, get) => {
         delete next[sessionId]
         return { todos: next }
       }),
+    update: null,
+    checkUpdate: async () => {
+      set({ update: { state: 'checking' } })
+      const s = await window.seek.checkUpdate().catch((e) => ({ state: 'error' as const, error: String(e) }))
+      set({ update: s })
+    },
+    installUpdate: async () => {
+      await window.seek.installUpdate()
+    },
 
     active: () => get().sessions.find((s) => s.id === get().activeId) ?? null,
     loadBalance: async () => {
@@ -289,6 +304,11 @@ export const useStore = create<State>((set, get) => {
           }
         })
       )
+
+      // 自动更新：拉取当前状态 + 订阅主进程推送（启动后主进程会自动检查）
+      set({ update: await window.seek.getUpdateStatus() })
+      cleanupUpdate?.()
+      cleanupUpdate = window.seek.onUpdate((s) => set({ update: s }))
     },
 
     startBgTask: async (goal, attachments = [], reasoning) => {

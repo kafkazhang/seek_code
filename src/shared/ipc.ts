@@ -16,6 +16,10 @@ export const IPC = {
   dataInfo: 'data:info',
   dataChangeDir: 'data:change-dir',
   appRelaunch: 'app:relaunch',
+  // 自动更新
+  updateCheck: 'update:check',
+  updateInstall: 'update:install',
+  updateStatus: 'update:status',
   // 文件列表与预览
   projectTree: 'project:tree',
   fileRead: 'file:read',
@@ -68,5 +72,6 @@ export const IPC = {
   // event (main -> renderer, 单向推送)
   agentEvent: 'agent:event',
   termEvent: 'term:event',
-  taskEvent: 'task:event'
+  taskEvent: 'task:event',
+  updateEvent: 'update:event'
 } as const

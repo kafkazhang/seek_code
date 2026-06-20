@@ -14,7 +14,12 @@ export const THEMES: ThemeMeta[] = [
   { id: 'midnight', label: '午夜', desc: '靛蓝 · 紫罗兰', swatch: ['#070818', '#0d0f28', '#8b7bff', '#dcdcf5'] },
   { id: 'ember', label: '余烬', desc: '暖炭 · 琥珀', swatch: ['#0d0a07', '#1a1310', '#ff9d4d', '#f0e3d5'] },
   { id: 'forest', label: '林海', desc: '墨绿 · 薄荷', swatch: ['#050f0b', '#0a1a14', '#40e0a0', '#d6f0e4'] },
-  { id: 'daylight', label: '昼光', desc: '浅色', swatch: ['#eef2f7', '#ffffff', '#0c9c8e', '#16233a'] }
+  { id: 'daylight', label: '昼光', desc: '浅色', swatch: ['#eef2f7', '#ffffff', '#0c9c8e', '#16233a'] },
+  { id: 'particle', label: '粒子流', desc: '深空 · 流光粒子', swatch: ['#06030f', '#0e0a24', '#7cc4ff', '#e6e8ff'] },
+  { id: 'sakura', label: '樱花少女', desc: '浅色 · 粉樱飘落', swatch: ['#ffeaf4', '#ffffff', '#ff7aa8', '#5a2a44'] },
+  { id: 'ink', label: '水墨', desc: '宣纸 · 墨韵留白', swatch: ['#f1ece1', '#fffdf8', '#45596b', '#2b2b30'] },
+  { id: 'lavender', label: '薰衣草', desc: '浅色 · 梦幻紫', swatch: ['#efe8fb', '#ffffff', '#9678dc', '#3a2f55'] },
+  { id: 'peach', label: '蜜桃', desc: '浅色 · 暖桃绒', swatch: ['#ffeadf', '#ffffff', '#ff8a65', '#5a3327'] }
 ]
 
 const VALID = new Set(THEMES.map((t) => t.id))

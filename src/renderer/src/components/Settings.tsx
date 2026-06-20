@@ -4,7 +4,7 @@ import { CatalogEntry, DataInfo, DiscoveredSkill, McpStatus, SkillMeta } from '@
 import { MODES } from '../modes'
 import { THEMES } from '../themes'
 
-type TabId = 'model' | 'permission' | 'appearance' | 'skills' | 'mcp' | 'data'
+type TabId = 'model' | 'permission' | 'appearance' | 'skills' | 'mcp' | 'data' | 'update'
 
 const TABS: { id: TabId; label: string; icon: JSX.Element }[] = [
   {
@@ -69,6 +69,16 @@ const TABS: { id: TabId; label: string; icon: JSX.Element }[] = [
         <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
       </svg>
     )
+  },
+  {
+    id: 'update',
+    label: '版本与更新',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <path d="M21 12a9 9 0 1 1-3-6.7" />
+        <path d="M21 4v4h-4" />
+      </svg>
+    )
   }
 ]
 
@@ -112,6 +122,7 @@ export default function Settings(): JSX.Element {
             {tab === 'skills' && <TabSkills />}
             {tab === 'mcp' && <TabMcp />}
             {tab === 'data' && <TabData />}
+            {tab === 'update' && <TabUpdate />}
           </div>
         </div>
       </div>
@@ -942,6 +953,73 @@ function TabData(): JSX.Element {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── 版本与更新 ───────────────────────────────────────
+function TabUpdate(): JSX.Element {
+  const update = useStore((s) => s.update)
+  const checkUpdate = useStore((s) => s.checkUpdate)
+  const installUpdate = useStore((s) => s.installUpdate)
+
+  const busy = update?.state === 'checking' || update?.state === 'available' || update?.state === 'downloading'
+  const downloaded = update?.state === 'downloaded'
+  const statusText =
+    update?.state === 'checking'
+      ? '正在检查…'
+      : update?.state === 'available'
+        ? `发现新版本 v${update.version ?? ''}，正在后台下载…`
+        : update?.state === 'downloading'
+          ? `下载中 ${update.percent ?? 0}%`
+          : update?.state === 'downloaded'
+            ? `新版本 v${update.version ?? ''} 已下载，重启即可安装`
+            : update?.state === 'up-to-date'
+              ? '已是最新版本 ✓'
+              : update?.state === 'error'
+                ? `检查失败：${update.error ?? ''}`
+                : update?.state === 'dev'
+                  ? '当前为开发环境，打包后才会检查更新'
+                  : ''
+  const statusClass = update?.state === 'error' ? ' bad' : downloaded || update?.state === 'up-to-date' ? ' ok' : ''
+
+  return (
+    <div className="tab-pane">
+      <div className="tab-h">版本与更新</div>
+      <div className="tab-sub">应用启动后会自动检查更新；也可在此手动检查。新版本会在后台下载，完成后提示重启安装。</div>
+
+      <div className="kv">
+        <span>当前版本</span>
+        <b>v{__APP_VERSION__}</b>
+      </div>
+
+      {statusText && (
+        <div className={'test-result' + statusClass} style={{ marginTop: 12 }}>
+          {statusText}
+        </div>
+      )}
+
+      <div className="acts" style={{ marginTop: 12 }}>
+        <button className={'btn ' + (downloaded ? 'ghost' : 'primary')} onClick={() => void checkUpdate()} disabled={busy}>
+          {update?.state === 'checking' ? '检查中…' : '检查更新'}
+        </button>
+        {downloaded && (
+          <button className="btn primary" onClick={() => void installUpdate()}>
+            重启安装新版本
+          </button>
+        )}
+        <button
+          className="btn ghost"
+          style={{ marginLeft: 'auto' }}
+          onClick={() => void window.seek.openUrl('https://github.com/kafkazhang/seek_code/releases')}
+        >
+          发布历史 ↗
+        </button>
+      </div>
+
+      <div className="tip" style={{ marginTop: 12 }}>
+        更新来自 GitHub Release。macOS 未签名版本暂不支持自动更新，可点「发布历史」手动下载安装。
+      </div>
     </div>
   )
 }

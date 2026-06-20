@@ -4,6 +4,7 @@ import { basename, join, resolve, relative, isAbsolute } from 'node:path'
 import { IPC } from '@shared/ipc'
 import { getConfig, setConfig, settingsPath, dataDir, hasApiKey } from './config'
 import { changeDataRoot } from './dataroot'
+import { checkForUpdates, quitAndInstall, getUpdateStatus } from './updater'
 import { getClient, fim, getBalance, embedBatch } from './gateway'
 import { runAgent, abortSession, resetSession, ApprovalFn } from './agent'
 import { loadSessions, saveSessions, sessionsPath } from './sessions'
@@ -131,6 +132,11 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     app.exit(0)
     return true
   })
+
+  // 自动更新：手动检查 / 立即安装 / 查询当前状态
+  ipcMain.handle(IPC.updateCheck, () => checkForUpdates())
+  ipcMain.handle(IPC.updateInstall, () => quitAndInstall())
+  ipcMain.handle(IPC.updateStatus, () => getUpdateStatus())
 
   ipcMain.handle(
     IPC.agentSend,

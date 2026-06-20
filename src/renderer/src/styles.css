@@ -27,6 +27,11 @@
   --coral: #ff7d5c;
   --danger: #ff5470;
   --good: #3fe6a4;
+  /* 标题色 / 行内代码色：深色主题用亮色，浅色主题在各自 [data-theme] 中覆盖为深色 */
+  --heading: #fff;
+  --code-fg: var(--sonar-bright);
+  /* 飘落花瓣配色（樱花/薰衣草/蜜桃 主题各自覆盖） */
+  --petal: linear-gradient(135deg, #ffd7e8 0%, #ff9ec6 100%);
 
   /* —— 氛围 / 遮罩 —— */
   --body-grad: linear-gradient(180deg, #06101f 0%, #05080f 60%, #04060c 100%);
@@ -401,13 +406,19 @@ button {
   border-color: var(--sonar-deep);
   background: rgba(var(--accent-rgb), 0.06);
 }
+/* 标题栏内的「新建会话」：去掉外边距、压扁高度以贴合顶栏 */
+.new-session.tb-new {
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 12.5px;
+}
 .new-session .plus {
   font-size: 17px;
   line-height: 1;
   color: var(--sonar);
 }
 .side-label {
-  padding: 6px 18px;
+  padding: 12px 18px 6px;
   font-family: var(--disp);
   font-size: 10px;
   letter-spacing: 0.16em;
@@ -539,6 +550,33 @@ button {
   font-family: var(--mono);
   font-size: 9.5px;
   color: var(--faint);
+}
+.sf-ver {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--faint);
+}
+.sf-sub.upd {
+  color: var(--amber);
+}
+.sf-update {
+  border: 1px solid var(--amber);
+  background: rgba(var(--amber-rgb), 0.12);
+  color: var(--amber);
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sf-update:hover {
+  background: rgba(var(--amber-rgb), 0.22);
+}
+.upd-status {
+  font-size: 12px;
+  color: var(--dim);
+  align-self: center;
 }
 
 /* conversation header */
@@ -844,7 +882,7 @@ button {
 .md-body h3,
 .md-body h4 {
   font-family: var(--disp);
-  color: #fff;
+  color: var(--heading);
   margin: 18px 0 10px;
   line-height: 1.3;
 }
@@ -879,7 +917,7 @@ button {
   background: rgba(var(--line-rgb), 0.12);
   padding: 1px 5px;
   border-radius: 4px;
-  color: var(--sonar-bright);
+  color: var(--code-fg);
 }
 .md-body pre {
   background: var(--abyss);
@@ -3926,8 +3964,241 @@ button {
   --good: #1f9d6b;
   --body-grad: linear-gradient(180deg, #f4f7fb 0%, #eef2f7 60%, #e7edf5 100%);
   --scrim: rgba(20, 35, 60, 0.34);
+  --heading: #142235;
+  --code-fg: #0a7a6f;
 }
 
+/* 粒子流 · 深空 / 流光粒子（配合 .fx-particles 动画层） */
+[data-theme='particle'] {
+  --accent-rgb: 124, 196, 255;
+  --line-rgb: 150, 160, 240;
+  --ink-rgb: 8, 8, 26;
+  --blue-rgb: 130, 120, 255;
+  --good-rgb: 95, 227, 176;
+  --abyss: #06030f;
+  --deep: #0e0a24;
+  --deep-2: #140e30;
+  --surface: #1c1545;
+  --text: #e6e8ff;
+  --dim: #9b9ad0;
+  --faint: #5a5890;
+  --sonar: #7cc4ff;
+  --sonar-bright: #a9dcff;
+  --sonar-deep: #3a55b0;
+  --blue: #8278ff;
+  --blue-deep: #3a2f8a;
+  --amber: #ffcf6b;
+  --coral: #ff7da6;
+  --danger: #ff5470;
+  --good: #5fe3b0;
+  --body-grad: radial-gradient(120% 90% at 50% -10%, #1a1240 0%, #0c0820 46%, #06030f 100%);
+  --scrim: rgba(6, 4, 18, 0.66);
+}
+
+/* 樱花少女 · 浅色 / 粉樱飘落（配合 .fx-petals 动画层） */
+[data-theme='sakura'] {
+  --accent-rgb: 255, 122, 168;
+  --line-rgb: 230, 120, 165;
+  --ink-rgb: 255, 255, 255;
+  --danger-rgb: 224, 58, 110;
+  --amber-rgb: 214, 130, 55;
+  --blue-rgb: 168, 120, 224;
+  --good-rgb: 63, 179, 126;
+  --abyss: #fff0f6;
+  --deep: #ffffff;
+  --deep-2: #fff5fa;
+  --surface: #ffffff;
+  --text: #5a2a44;
+  --dim: #9a6b82;
+  --faint: #c79bb0;
+  --sonar: #ff7aa8;
+  --sonar-bright: #ff9dc0;
+  --sonar-deep: #e0578f;
+  --blue: #b07ae0;
+  --blue-deep: #f0d6f5;
+  --amber: #d68237;
+  --coral: #ff7d8a;
+  --danger: #e03a6e;
+  --good: #3fb37e;
+  --body-grad: linear-gradient(180deg, #fff5fa 0%, #ffeaf4 55%, #ffe0ef 100%);
+  --scrim: rgba(120, 40, 80, 0.3);
+  --heading: #7a2a52;
+  --code-fg: #b02d68;
+  --petal: linear-gradient(135deg, #ffd7e8 0%, #ff9ec6 100%);
+}
+
+/* 水墨 · 宣纸 / 墨韵（配合 .fx-ink 墨晕动画层；朱砂红作点缀） */
+[data-theme='ink'] {
+  --accent-rgb: 70, 84, 102;
+  --line-rgb: 90, 95, 110;
+  --ink-rgb: 255, 255, 255;
+  --danger-rgb: 178, 58, 58;
+  --amber-rgb: 150, 110, 60;
+  --blue-rgb: 70, 90, 120;
+  --good-rgb: 70, 120, 90;
+  --abyss: #f3efe6;
+  --deep: #faf7f0;
+  --deep-2: #f1ece1;
+  --surface: #fffdf8;
+  --text: #2b2b30;
+  --dim: #5d5d66;
+  --faint: #9a978c;
+  --sonar: #45596b;
+  --sonar-bright: #5a6e80;
+  --sonar-deep: #2f3e4d;
+  --blue: #5a6e80;
+  --blue-deep: #d9d2c4;
+  --amber: #8a6a3a;
+  --coral: #b33a3a;
+  --danger: #b33a3a;
+  --good: #4a7a5a;
+  --body-grad: linear-gradient(180deg, #f6f2e9 0%, #f1ece1 60%, #ebe5d8 100%);
+  --scrim: rgba(40, 38, 32, 0.3);
+  --heading: #1f1f24;
+  --code-fg: #2f3e4d;
+}
+
+/* 薰衣草 · 浅色 / 梦幻紫（配合 .fx-petals 飘落，花瓣取 --petal） */
+[data-theme='lavender'] {
+  --accent-rgb: 150, 120, 220;
+  --line-rgb: 150, 130, 210;
+  --ink-rgb: 255, 255, 255;
+  --danger-rgb: 214, 70, 120;
+  --amber-rgb: 176, 122, 42;
+  --blue-rgb: 130, 120, 230;
+  --good-rgb: 76, 174, 142;
+  --abyss: #f3effc;
+  --deep: #ffffff;
+  --deep-2: #f7f3fe;
+  --surface: #ffffff;
+  --text: #3a2f55;
+  --dim: #7a6f9a;
+  --faint: #b3a8cf;
+  --sonar: #9678dc;
+  --sonar-bright: #b49aef;
+  --sonar-deep: #6a4fb0;
+  --blue: #7d8cf0;
+  --blue-deep: #e2dbf7;
+  --amber: #b07a2a;
+  --coral: #e07da6;
+  --danger: #d64678;
+  --good: #4cae8e;
+  --body-grad: linear-gradient(180deg, #f7f3fe 0%, #efe8fb 55%, #e8def8 100%);
+  --scrim: rgba(70, 50, 110, 0.28);
+  --heading: #3a2350;
+  --code-fg: #6a4fb0;
+  --petal: linear-gradient(135deg, #e6dcff 0%, #b9a4f0 100%);
+}
+
+/* 蜜桃 · 浅色 / 暖桃绒（配合 .fx-petals 飘落，花瓣取 --petal） */
+[data-theme='peach'] {
+  --accent-rgb: 255, 138, 101;
+  --line-rgb: 230, 150, 120;
+  --ink-rgb: 255, 255, 255;
+  --danger-rgb: 224, 80, 90;
+  --amber-rgb: 210, 130, 50;
+  --blue-rgb: 220, 130, 150;
+  --good-rgb: 90, 170, 120;
+  --abyss: #fff3ec;
+  --deep: #ffffff;
+  --deep-2: #fff6f0;
+  --surface: #ffffff;
+  --text: #5a3327;
+  --dim: #9a6f5e;
+  --faint: #d0a895;
+  --sonar: #ff8a65;
+  --sonar-bright: #ffa988;
+  --sonar-deep: #e0664a;
+  --blue: #f0936f;
+  --blue-deep: #ffe0d0;
+  --amber: #d2823c;
+  --coral: #ff7a6a;
+  --danger: #e0505a;
+  --good: #5aaa78;
+  --body-grad: linear-gradient(180deg, #fff6f0 0%, #ffeadf 55%, #ffe0d0 100%);
+  --scrim: rgba(110, 60, 40, 0.28);
+  --heading: #6a3324;
+  --code-fg: #c2502f;
+  --petal: linear-gradient(135deg, #ffe0cf 0%, #ffb38a 100%);
+}
+
+/* ── 主题氛围动画层（无图片资源；仅对应主题挂载）── */
+.fx {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+/* 粒子流：Canvas 星座网络。作前景叠层（在内容之上、设置弹层 z-index 60 之下），
+   screen 混合 + 低不透明度——发光线条叠加在 UI 上清晰可见，又不遮挡文字。 */
+.fx-canvas {
+  z-index: 6;
+  opacity: 0.62;
+  mix-blend-mode: screen;
+  display: block;
+}
+/* 花瓣飘落（樱花/薰衣草/蜜桃 共用）：自顶向下，作前景叠层（在内容之上、设置弹层之下 z-index 60）。
+   花瓣颜色取主题变量 --petal。 */
+.fx-petals {
+  z-index: 5;
+}
+.fx-petals i {
+  position: absolute;
+  top: -24px;
+  background: var(--petal);
+  border-radius: 100% 0 100% 0;
+  opacity: 0;
+  filter: drop-shadow(0 1px 2px rgba(160, 120, 170, 0.22));
+  will-change: transform, opacity;
+  animation-name: fx-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes fx-fall {
+  0% {
+    transform: translate3d(0, -10vh, 0) rotate(var(--rot, 0deg));
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate3d(var(--drift, 0), 110vh, 0) rotate(calc(var(--rot, 0deg) + 360deg));
+    opacity: 0.6;
+  }
+}
+/* 水墨：柔和墨晕缓缓游移、呼吸缩放，作背景氛围（在内容之后），如墨入清水缓缓晕开 */
+.fx-ink {
+  z-index: 0;
+}
+.fx-ink i {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, rgba(45, 45, 55, 0.16), rgba(45, 45, 55, 0.06) 45%, transparent 70%);
+  filter: blur(6px);
+  transform: translate(-50%, -50%);
+  will-change: transform, opacity;
+  animation-name: fx-ink-drift;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+@keyframes fx-ink-drift {
+  0% {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0.45;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx, 0)), calc(-50% + var(--dy, 0))) scale(1.15);
+    opacity: 0.85;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fx i {
+    animation: none;
+    opacity: 0.25;
+  }
+}
 
 /* ── 设置 · 主题选择器 ── */
 .theme-grid {
