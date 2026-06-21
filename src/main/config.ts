@@ -45,6 +45,10 @@ function loadPersisted(): PersistShape {
         merged.permissionMode = raw.autoApprove ? 'auto' : 'ask'
       }
       delete (merged as Record<string, unknown>).autoApprove
+      // 迁移：旧版扁平 pricing（无 flash/pro 分档）→ 新版按模型分档（直接回退到默认价）
+      if (merged.pricing && (merged.pricing.flash === undefined || merged.pricing.pro === undefined)) {
+        merged.pricing = DEFAULT_CONFIG.pricing
+      }
       return merged
     }
   } catch {
@@ -85,6 +89,7 @@ export function setConfig(patch: ConfigPatch): AppConfig {
   if (patch.theme !== undefined) next.theme = patch.theme
   if (patch.semanticIndex !== undefined) next.semanticIndex = patch.semanticIndex
   if (patch.embedModel !== undefined) next.embedModel = patch.embedModel.trim()
+  if (patch.pricing !== undefined) next.pricing = patch.pricing
 
   // 出口白名单跟随 baseURL / 向量服务 baseURL 自动同步
   const hosts = ['api.deepseek.com']

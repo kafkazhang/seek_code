@@ -4873,6 +4873,60 @@ button {
   text-decoration: line-through;
   opacity: 0.65;
 }
+.ti-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+/* 运行中的清单项：实时显示计时器 + 当前动作（流式工作内容） */
+.ti-activity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--sonar);
+  min-width: 0;
+}
+.ti-timer {
+  flex-shrink: 0;
+  color: var(--amber);
+}
+.ti-act-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ti-live {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sonar);
+  animation: ti-pulse 1.1s ease-in-out infinite;
+}
+@keyframes ti-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+/* 运行计时徽标 */
+.todo-timer {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--amber);
+  background: rgba(var(--amber-rgb), 0.12);
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
 
 /* ── 设置 · 向量服务配置块（语义检索开启后展开） ── */
 .embed-cfg {

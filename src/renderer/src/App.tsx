@@ -939,15 +939,67 @@ function toolPath(args: string): string | null {
   }
 }
 
+const TOOL_LABELS: Record<string, string> = {
+  run_command: '运行命令',
+  run_background: '后台运行',
+  bg_output: '查看输出',
+  bg_kill: '结束进程',
+  write_file: '写文件',
+  edit_file: '编辑文件',
+  multi_edit: '批量编辑',
+  read_file: '读取文件',
+  search_code: '检索代码',
+  list_files: '列目录',
+  glob_files: '匹配文件',
+  web_fetch: '联网读取',
+  todo_write: '更新清单',
+  spawn_subagents: '并行子代理',
+  project_check: '项目自检',
+  find_references: '查找引用',
+  find_definition: '定位定义'
+}
+function actionLabel(name: string, argsJson: string): string {
+  let arg = ''
+  try {
+    const o = JSON.parse(argsJson || '{}')
+    arg = String(o.path ?? o.command ?? o.query ?? o.url ?? o.pattern ?? o.goal ?? '')
+  } catch {
+    /* ignore */
+  }
+  const label = TOOL_LABELS[name] ?? name
+  const a = arg.split(/[\\/]/).pop() || arg
+  return arg ? `${label} · ${a.slice(0, 48)}` : label
+}
+function fmtElapsed(s: number): string {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
 // ── 任务清单卡（todo_write 工具维护，Composer 上方常驻）──
 function TodoBar(): JSX.Element | null {
   const cur = useStore((st) => st.active())
   const todos = useStore((st) => (cur ? st.todos[cur.id] : undefined))
+  const running = useStore((st) => (cur ? !!st.running[cur.id] : false))
   const clearTodos = useStore((st) => st.clearTodos)
   const [open, setOpen] = useState(true)
+  // 运行计时：每秒自增，让用户确信任务确在执行
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef(0)
+  useEffect(() => {
+    if (!running) return
+    startRef.current = Date.now()
+    setElapsed(0)
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000)
+    return () => clearInterval(t)
+  }, [running, cur?.id])
+
   if (!cur || !todos || todos.length === 0) return null
   const done = todos.filter((t) => t.status === 'completed').length
   const active = todos.find((t) => t.status === 'in_progress')
+  // 当前正在做什么：取最近一条助手消息里仍在执行的工具，否则提示思考/生成中
+  const lastBot = [...cur.messages].reverse().find((m) => m.role === 'assistant')
+  const activeTool = lastBot?.tools.find((t) => t.status === 'running')
+  const activity = running ? (activeTool ? actionLabel(activeTool.name, activeTool.args) : '思考 / 生成中…') : null
+
   return (
     <div className={'todo-bar' + (open ? ' open' : '')}>
       <div className="todo-head" onClick={() => setOpen((o) => !o)}>
@@ -976,7 +1028,16 @@ function TodoBar(): JSX.Element | null {
               <span className="ti-mark">
                 {t.status === 'completed' ? '✓' : t.status === 'in_progress' ? <span className="tc-spin" /> : '○'}
               </span>
-              <span className="ti-text">{t.content}</span>
+              <span className="ti-col">
+                <span className="ti-text">{t.content}</span>
+                {t.status === 'in_progress' && (running || activity) && (
+                  <span className="ti-activity">
+                    <span className="ti-live" />
+                    {running && <span className="ti-timer">⏱ {fmtElapsed(elapsed)}</span>}
+                    {activity && <span className="ti-act-text">{activity}</span>}
+                  </span>
+                )}
+              </span>
             </div>
           ))}
         </div>

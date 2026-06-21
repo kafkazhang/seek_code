@@ -103,8 +103,9 @@ function walk(nodes: { name: string; type: string; children?: any[] }[], prefix:
   }
 }
 
-// ── 成本核算：用 DeepSeek 返回的缓存命中 token 估算花费与省下金额 ──
-export function computeUsage(raw: unknown): UsageSnapshot {
+// ── 成本核算：用 DeepSeek 返回的缓存命中 token，按「当前档位对应模型」的价格估算花费与省下金额 ──
+// 档位→模型：fast→flash；balanced/deep→pro（两档价格不同，需分别计价）。
+export function computeUsage(raw: unknown, mode: ReasoningMode = 'balanced'): UsageSnapshot {
   const u = (raw ?? {}) as Record<string, number>
   const prompt = u.prompt_tokens ?? 0
   const completion = u.completion_tokens ?? 0
@@ -112,13 +113,11 @@ export function computeUsage(raw: unknown): UsageSnapshot {
   const hit = u.prompt_cache_hit_tokens ?? 0
   const miss = u.prompt_cache_miss_tokens ?? Math.max(prompt - hit, 0)
   const { pricing } = getConfig()
+  const p = mode === 'fast' ? pricing.flash : pricing.pro
   const M = 1_000_000
-  const cost =
-    (hit * pricing.cacheHitInput) / M +
-    (miss * pricing.cacheMissInput) / M +
-    (completion * pricing.output) / M
+  const cost = (hit * p.cacheHitInput) / M + (miss * p.cacheMissInput) / M + (completion * p.output) / M
   // 若这些命中 token 全部按未命中计价，会多花多少 → 即省下金额
-  const saved = (hit * (pricing.cacheMissInput - pricing.cacheHitInput)) / M
+  const saved = (hit * (p.cacheMissInput - p.cacheHitInput)) / M
   const cacheHitRate = prompt > 0 ? hit / prompt : 0
   return {
     promptTokens: prompt,

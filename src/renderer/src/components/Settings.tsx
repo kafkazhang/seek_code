@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
-import { CatalogEntry, DataInfo, DiscoveredSkill, McpStatus, SkillMeta } from '@shared/types'
+import { CatalogEntry, DataInfo, DiscoveredSkill, McpStatus, ModelPrice, Pricing, SkillMeta, DEFAULT_CONFIG } from '@shared/types'
 import { MODES } from '../modes'
 import { THEMES } from '../themes'
 
@@ -153,11 +153,16 @@ function TabModel(): JSX.Element {
   const [testing, setTesting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [saved, setSaved] = useState(false)
+  const [pricing, setPricing] = useState<Pricing>(config?.pricing ?? DEFAULT_CONFIG.pricing)
+  const [showPricing, setShowPricing] = useState(false)
   const hasKey = config?.hasKey ?? false
   const hasEmbedKey = config?.hasEmbedKey ?? false
 
+  const setPrice = (mdl: 'flash' | 'pro', field: keyof ModelPrice, v: string): void =>
+    setPricing((pr) => ({ ...pr, [mdl]: { ...pr[mdl], [field]: Number(v) || 0 } }))
+
   function patchObj(): any {
-    const p: any = { baseURL, flashModel, proModel, fimModel, semanticIndex, embedBaseURL, embedModel }
+    const p: any = { baseURL, flashModel, proModel, fimModel, semanticIndex, embedBaseURL, embedModel, pricing }
     if (apiKey.trim()) p.apiKey = apiKey.trim()
     if (embedKey.trim()) p.embedApiKey = embedKey.trim()
     return p
@@ -298,6 +303,57 @@ function TabModel(): JSX.Element {
                 查询索引状态
               </button>
             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="field">
+        <label className="check-row" style={{ cursor: 'pointer' }} onClick={() => setShowPricing((v) => !v)}>
+          {showPricing ? '▾' : '▸'} 计费价格（用于成本估算）
+        </label>
+        <div className="tip">
+          DeepSeek V4 两档分别计价（元 / 百万 token）。价格与限时折扣以
+          <button
+            className="link-btn"
+            onClick={() => void window.seek.openUrl('https://api-docs.deepseek.com/zh-cn/quick_start/pricing/')}
+          >
+            官网价格说明
+          </button>
+          为准；若与实际计费不符，可在此按官网调整（保存即生效）。
+        </div>
+        {showPricing && (
+          <div className="embed-cfg">
+            {(['flash', 'pro'] as const).map((mdl) => (
+              <div key={mdl} style={{ marginBottom: 6 }}>
+                <label>{mdl === 'flash' ? '快速档 · V4-Flash' : '深度档 · V4-Pro'}（缓存命中 / 未命中 / 输出）</label>
+                <div className="field-row">
+                  <input
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    value={pricing[mdl].cacheHitInput}
+                    onChange={(e) => setPrice(mdl, 'cacheHitInput', e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={pricing[mdl].cacheMissInput}
+                    onChange={(e) => setPrice(mdl, 'cacheMissInput', e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={pricing[mdl].output}
+                    onChange={(e) => setPrice(mdl, 'output', e.target.value)}
+                  />
+                </div>
+              </div>
+            ))}
+            <button className="link-btn" onClick={() => setPricing(DEFAULT_CONFIG.pricing)}>
+              恢复默认价格
+            </button>
           </div>
         )}
       </div>

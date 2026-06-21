@@ -53,10 +53,22 @@ export type ThemeId =
   | 'lavender'
   | 'peach'
 
-export interface Pricing {
+/** 单个模型的计费价（人民币元 / 百万 token） */
+export interface ModelPrice {
+  /** 缓存命中输入价 */
   cacheHitInput: number
+  /** 缓存未命中输入价 */
   cacheMissInput: number
+  /** 输出价 */
   output: number
+}
+/**
+ * 计费价格：快速档(flash)与深度档(pro)分别计价。
+ * DeepSeek V4 两档价格不同（Pro 输出约为 Flash 的 3 倍），且常有限时折扣，故拆分并可在设置中按官网调整。
+ */
+export interface Pricing {
+  flash: ModelPrice
+  pro: ModelPrice
 }
 
 export interface ConfigPatch {
@@ -73,6 +85,8 @@ export interface ConfigPatch {
   embedModel?: string
   /** 向量服务 API Key（独立于 DeepSeek Key，safeStorage 加密存储） */
   embedApiKey?: string
+  /** 计费价格（按官网调整，用于成本估算） */
+  pricing?: Pricing
 }
 
 /** DeepSeek-V4 thinking 参数（嵌套于请求体 thinking 字段） */
@@ -432,6 +446,10 @@ export const DEFAULT_CONFIG: AppConfig = {
   embedBaseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   embedModel: 'text-embedding-v3',
   egressAllowlist: ['api.deepseek.com'],
-  // 价格为估算（元/百万 token），可在设置中调整；以官方计费为准
-  pricing: { cacheHitInput: 0.5, cacheMissInput: 2, output: 8 }
+  // DeepSeek V4 官方价（元/百万 token）：Flash 与 Pro 分档计价；含限时折扣，可在设置中按官网调整。
+  // 参考 https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
+  pricing: {
+    flash: { cacheHitInput: 0.02, cacheMissInput: 1, output: 2 },
+    pro: { cacheHitInput: 0.025, cacheMissInput: 3, output: 6 }
+  }
 }

@@ -10,7 +10,7 @@ import {
 } from './gateway'
 import { toolDefs, execute, summarize, previewEdit, isDangerousCommand, WRITE_TOOLS, COMMAND_TOOLS } from './tools'
 import { mcpToolDefs, isMcpTool, callMcpTool } from './mcp'
-import { AgentEvent, EditPreview, PermissionMode, PriorMessage, ProjectInfo, ReasoningMode, SendOptions } from '@shared/types'
+import { AgentEvent, EditPreview, PermissionMode, PriorMessage, ProjectInfo, ReasoningMode, SendOptions, TodoItem } from '@shared/types'
 import { getConfig } from './config'
 import { memoryContext } from './memory'
 import { symbolMap } from './codeindex'
@@ -23,10 +23,13 @@ type ChatMsg = OpenAI.Chat.Completions.ChatCompletionMessageParam
 interface Session {
   history: ChatMsg[]
   abort?: AbortController
+  /** 最近一次 todo_write 的清单（用于回合结束时检查是否还有未完成项） */
+  lastTodos?: TodoItem[]
 }
 
 const sessions = new Map<string, Session>()
 const MAX_STEPS = 25
+const MAX_STEPS_AUTO = 80 // 全自动模式：放宽单回合步数，支持自主完成长任务清单（有失败计数与最终提示兜底）
 const MAX_SUB_STEPS = 18 // 子代理单回合步数上限（略紧，防失控）
 const MAX_SESSIONS = 50 // 内存中保留的最大会话数，超出按最久未用淘汰（避免长期运行内存只增不减）
 
@@ -189,8 +192,10 @@ export async function runAgent(
   const mode: ReasoningMode = options.reasoning ?? cfg.reasoning
   const perm: PermissionMode = options.permissionMode ?? cfg.permissionMode
   const isSub = options.isSubagent === true
-  // 子代理：步数上限收紧，且不可再派生子代理（工具列表中剔除）
-  const maxSteps = isSub ? MAX_SUB_STEPS : MAX_STEPS
+  // 步数上限：子代理收紧；全自动模式放宽，让其在一轮内自主完成长任务清单；其余档保持适中。
+  const maxSteps = isSub ? MAX_SUB_STEPS : perm === 'auto' ? MAX_STEPS_AUTO : MAX_STEPS
+  // 全自动模式下「清单未完成就想收尾」时催继续的上限也相应放宽（仍有 maxSteps 与失败计数兜底）。
+  const maxTodoNudge = perm === 'auto' ? MAX_TODO_NUDGE_AUTO : MAX_TODO_NUDGE
   let baseToolDefs = isSub ? toolDefs.filter((d) => d.function.name !== 'spawn_subagents') : toolDefs
   // 未绑定项目（通用助手模式）：只保留与项目无关的工具，文件/命令/检索类全部剔除
   if (!project) baseToolDefs = baseToolDefs.filter((d) => PROJECTLESS_TOOLS.has(d.function.name))
@@ -259,6 +264,7 @@ export async function runAgent(
     withRetry(() => client.chat.completions.create(request, { signal: abort.signal }) as Promise<unknown>)
 
   let autoContinues = 0
+  let todoNudges = 0 // 因「清单仍有未开始项」催继续的次数（有界，防死循环）
   // 防卡死：同名同参的工具调用反复失败时，注入提示强制其换方法（重读文件 / 换工具）
   const failCounts = new Map<string, number>()
   try {
@@ -304,7 +310,7 @@ export async function runAgent(
         if (chunk.usage) rawUsage = chunk.usage
       }
 
-      if (rawUsage) emit({ type: 'usage', sessionId, usage: computeUsage(rawUsage) })
+      if (rawUsage) emit({ type: 'usage', sessionId, usage: computeUsage(rawUsage, mode) })
 
       const toolCalls = Object.values(toolAcc).filter((t) => t.name)
       const assistantMsg: any = { role: 'assistant', content: content || null }
@@ -323,6 +329,15 @@ export async function runAgent(
           autoContinues++
           s.history.push({ role: 'user', content: AUTO_NUDGE })
           emit({ type: 'status', sessionId, text: '继续执行…', mode })
+          continue
+        }
+        // 任务清单还有「未开始(pending)」项却想收尾 → 催它逐项完成（有界）。
+        // 若反复失败、最终仍未完成，由渲染层在结束时给出明确提示，避免「悄悄结束」。
+        const pending = (s.lastTodos ?? []).filter((t) => t.status === 'pending')
+        if (pending.length && todoNudges < maxTodoNudge) {
+          todoNudges++
+          s.history.push({ role: 'user', content: todoNudgeText(pending) })
+          emit({ type: 'status', sessionId, text: `继续完成清单（剩 ${pending.length} 项）…`, mode })
           continue
         }
         return void emit({ type: 'done', sessionId })
@@ -412,6 +427,7 @@ export async function runAgent(
           } else if (t.name === 'todo_write') {
             const n = normalizeTodos(args.todos)
             if (!n.ok) throw new Error(n.error)
+            s.lastTodos = n.todos! // 记录最新清单，回合结束时据此判断是否还有未完成项
             emit({ type: 'todos', sessionId, todos: n.todos! })
             result = renderTodos(n.todos!)
           } else if (t.name === 'web_fetch') {
@@ -513,6 +529,17 @@ function needsApproval(perm: PermissionMode, name: string): boolean {
 const MAX_AUTO_CONTINUE = 3
 const AUTO_NUDGE =
   '请立即用工具继续并真正完成上述工作：需要创建/修改文件就直接调用 write_file / edit_file，不要只描述计划。全部完成后再给出简短总结。'
+
+const MAX_TODO_NUDGE = 4 // 因清单未完成催继续的上限（防止反复失败时死循环）
+const MAX_TODO_NUDGE_AUTO = 24 // 全自动模式放宽（仍受 maxSteps 与失败计数兜底）
+/** 清单仍有未开始项时的催办语：逐项完成；确实无法完成的项必须说明原因，不得跳过 */
+function todoNudgeText(pending: TodoItem[]): string {
+  const items = pending.map((t) => '· ' + t.content).join('\n')
+  return (
+    `任务清单还有未完成项，请继续逐项完成（每完成一项立即用 todo_write 标记 completed）：\n${items}\n` +
+    '若某项确实无法完成（例如工具多次失败），不要静默跳过：请说明原因与已尝试的方法，并保持该项为未完成状态后再结束。'
+  )
+}
 
 /** 判断模型是否"只宣布意图却没动手"，用于触发自动续跑 */
 function shouldAutoContinue(text: string): boolean {

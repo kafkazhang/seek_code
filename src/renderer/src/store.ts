@@ -113,6 +113,10 @@ interface State {
   /** 各会话的任务清单（todo_write 工具维护，不持久化） */
   todos: Record<string, TodoItem[]>
   clearTodos: (sessionId: string) => void
+  /** 全自动模式下，各会话本轮链已自动续跑的次数（防失控；用户手动发言时清零） */
+  autoTaskContinues: Record<string, number>
+  /** 自动续跑：本轮结束仍有未完成清单项时，自主继续（仅全自动模式调用） */
+  continueTask: (sessionId: string) => Promise<void>
   /** 自动更新状态（底栏/设置页展示） */
   update: UpdateStatus | null
   checkUpdate: () => Promise<void>
@@ -173,6 +177,9 @@ function sessionMode(session: Session | null, config: AppConfig | null): Permiss
   return session?.permissionMode ?? config?.permissionMode ?? 'ask'
 }
 
+// 全自动模式下，单条用户指令最多自动续跑多少轮以完成任务清单（防失控；用户再次发言即清零）
+const MAX_AUTO_TASK_CONTINUE = 5
+
 export const useStore = create<State>((set, get) => {
   const persist = (): void => {
     void window.seek.saveSessions({ activeId: get().activeId, sessions: get().sessions })
@@ -232,6 +239,43 @@ export const useStore = create<State>((set, get) => {
         delete next[sessionId]
         return { todos: next }
       }),
+    autoTaskContinues: {},
+    continueTask: async (sessionId) => {
+      const cur = get().sessions.find((s) => s.id === sessionId)
+      if (!cur) return
+      const prior: PriorMessage[] = cur.messages
+        .filter((m) => m.content && !m.note && (m.role === 'user' || m.role === 'assistant'))
+        .map((m) => ({ role: m.role, content: m.content }))
+      const note: ChatMessage = {
+        id: uid(),
+        role: 'assistant',
+        content: '↻ 自主继续完成未完成的任务清单项…',
+        reasoning: '',
+        tools: [],
+        note: true
+      }
+      const botMsg: ChatMessage = {
+        id: uid(),
+        role: 'assistant',
+        content: '',
+        reasoning: '',
+        tools: [],
+        timeline: [],
+        streaming: true,
+        mode: get().reasoning
+      }
+      patch(sessionId, (s) => ({ ...s, messages: [...s.messages, note, botMsg], updatedAt: Date.now() }))
+      set((st) => ({ running: { ...st.running, [sessionId]: true }, status: '自主继续…' }))
+      persist()
+      // 续跑指令作为用户消息发给主进程（不在聊天区显示为用户气泡），主进程沿用同一会话历史继续。
+      await window.seek.send({
+        sessionId,
+        text: '继续完成任务清单中尚未完成的项；每完成一项立即用 todo_write 标记 completed；确实无法完成的项请说明原因，不要静默跳过。',
+        options: { reasoning: get().reasoning, permissionMode: 'auto' },
+        projectRoot: cur.projectRoot,
+        priorMessages: prior
+      })
+    },
     update: null,
     checkUpdate: async () => {
       set({ update: { state: 'checking' } })
@@ -447,7 +491,11 @@ export const useStore = create<State>((set, get) => {
         messages: [...s.messages, userMsg, botMsg],
         updatedAt: Date.now()
       }))
-      set((st) => ({ running: { ...st.running, [cur.id]: true }, status: '已发送…' }))
+      set((st) => ({
+        running: { ...st.running, [cur.id]: true },
+        status: '已发送…',
+        autoTaskContinues: { ...st.autoTaskContinues, [cur.id]: 0 } // 新指令 → 重置自动续跑计数
+      }))
       persist()
 
       await window.seek.send({
@@ -725,18 +773,74 @@ export const useStore = create<State>((set, get) => {
           }))
           break
         case 'done':
-        case 'aborted':
+        case 'aborted': {
           patchLastBot(id, (m) => ({ ...m, streaming: false }))
-          set((st) => ({
-            running: { ...st.running, [id]: false },
-            status: e.type === 'done' ? '完成' : '已中断'
-          }))
+          let warnItems: string[] = []
+          set((st) => {
+            const next: Partial<State> = {
+              running: { ...st.running, [id]: false },
+              status: e.type === 'done' ? '完成' : '已中断'
+            }
+            if (e.type === 'done') {
+              const list = st.todos[id]
+              if (list && list.length) {
+                const incomplete = list.filter((t) => t.status !== 'completed')
+                if (incomplete.length === 1 && incomplete[0].status === 'in_progress') {
+                  // 仅剩最后一项且在执行中 → 视为完成（模型常做完却忘了收尾的 todo_write）
+                  next.todos = {
+                    ...st.todos,
+                    [id]: list.map((t) => (t.status === 'in_progress' ? { ...t, status: 'completed' as const } : t))
+                  }
+                } else if (incomplete.length >= 1) {
+                  // 还有未开始/多项未完成 → 不伪装完成，记录下来在下面给出明确提示
+                  warnItems = incomplete.map((t) => t.content)
+                }
+              }
+            }
+            return next
+          })
+          // 任务没做完就结束：
+          //  - 全自动模式 → 自主继续（有界），无需用户手动催；
+          //  - 其它模式 / 已达自动续跑上限 → 追加醒目提示，而不是悄悄收尾。
+          if (warnItems.length) {
+            const sess = get().sessions.find((s) => s.id === id) ?? null
+            const isAuto = sessionMode(sess, get().config) === 'auto'
+            const cnt = get().autoTaskContinues[id] ?? 0
+            if (isAuto && cnt < MAX_AUTO_TASK_CONTINUE) {
+              // 全自动：自主续跑下一轮，无需用户手动催
+              set((st) => ({ autoTaskContinues: { ...st.autoTaskContinues, [id]: cnt + 1 } }))
+              void get().continueTask(id)
+            } else {
+              patch(id, (s) => ({
+                ...s,
+                messages: [
+                  ...s.messages,
+                  {
+                    id: uid(),
+                    role: 'assistant',
+                    content:
+                      `⚠ 本轮结束，任务清单还有 ${warnItems.length} 项未完成：\n` +
+                      warnItems.map((x) => '· ' + x).join('\n') +
+                      (isAuto ? '\n（已自主续跑多轮仍未完成，可能受工具反复失败影响）' : '') +
+                      '\n如需继续，可直接回复「继续完成」。',
+                    reasoning: '',
+                    tools: [],
+                    note: true
+                  }
+                ],
+                updatedAt: Date.now()
+              }))
+            }
+          }
           persist()
+          void get().loadBalance() // 本轮已产生消费 → 实时刷新账户余额
           break
+        }
         case 'error':
           patchLastBot(id, (m) => ({ ...m, streaming: false, error: e.message }))
           set((st) => ({ running: { ...st.running, [id]: false }, status: '出错' }))
           persist()
+          void get().loadBalance()
           break
       }
     }
